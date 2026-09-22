@@ -16,11 +16,11 @@ client management, scheduling, invoicing and revenue lookup.
 
 Separate repositories, no monorepo, no shared package.
 
-| Repo | Purpose | Status |
-|---|---|---|
-| `cleanm-api` | REST API (this repo) | in progress |
-| `cleanm-web` | React web client | starts after the clients CRUD exists |
-| `cleanm-ios` | Native iOS client, hand-written in Swift | later |
+| Repo         | Purpose                                  | Status                               |
+| ------------ | ---------------------------------------- | ------------------------------------ |
+| `cleanm-api` | REST API (this repo)                     | in progress                          |
+| `cleanm-web` | React web client                         | starts after the clients CRUD exists |
+| `cleanm-ios` | Native iOS client, hand-written in Swift | later                                |
 
 Naming pattern: `<product>-<platform>`, lowercase, hyphenated.
 Local layout: all repos side by side under `~/Projects/cleanm/`.
