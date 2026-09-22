@@ -1,0 +1,11 @@
+{
+  "name": "cleanm-api",
+  "version": "0.0.0",
+  "private": true,
+  "description": "REST API for CleanM: scheduling, client management and invoicing for residential cleaning businesses",
+  "license": "UNLICENSED",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  }
+}
