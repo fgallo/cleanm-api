@@ -1,5 +1,7 @@
 import express from "express";
 
+import { config } from "./config.ts";
+
 const app = express();
 
 app.disable("x-powered-by");
@@ -8,8 +10,6 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
-const port = Number(process.env.PORT ?? 3000);
-
-app.listen(port, () => {
-  console.log(`Server listening on http://localhost:${port}`);
+app.listen(config.port, () => {
+  console.log(`Server listening on http://localhost:${config.port}`);
 });

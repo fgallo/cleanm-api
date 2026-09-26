@@ -22,8 +22,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint . && prettier --check .",
     "lint:fix": "eslint --fix . && prettier --write .",
-    "dev": "node --watch src/server.ts",
-    "start": "node src/server.ts"
+    "dev": "node --env-file-if-exists=.env --watch src/server.ts",
+    "start": "node --env-file-if-exists=.env src/server.ts"
   },
   "dependencies": {
     "express": "^5.2.1"
