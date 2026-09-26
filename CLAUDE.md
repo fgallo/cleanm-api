@@ -8,14 +8,16 @@ Full context, scope, roadmap and decisions: @docs/project-brief.md
 
 ## Stack decided so far
 
-Node 24 (.nvmrc, nvm), TypeScript 6, Express 5, ESLint + Prettier
+Node 24 (.nvmrc, nvm), TypeScript 6, Express 5, ESLint + Prettier,
+PostgreSQL 18 with `pg` and hand-written SQL, migrations as SQL files in
+`migrations/` applied by `src/db/migrate.ts`.
 
-Database, ORM, validation, tests and auth are not decided yet. Do not introduce
-them unless asked, and explain the alternatives first.
+Validation, tests and auth are not decided yet. Do not introduce them unless
+asked, and explain the alternatives first.
 
 ## Commands
 
-npm run dev | npm run typecheck | npm run lint
+npm run dev | npm run typecheck | npm run lint | npm run db:migrate
 
 ## Git: the human owns it
 

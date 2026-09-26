@@ -100,6 +100,17 @@ more than one property.
   used; validation and logging are added by hand when their steps arrive.
 - ESLint (flat config, `typescript-eslint`) and Prettier. Chosen over Biome for
   being the market standard.
+- PostgreSQL 18, installed with Homebrew for development. The production
+  database is chosen at deploy time (roadmap step 6); migrations are the bridge.
+- `pg` (node-postgres) with hand-written SQL and hand-written row types. Chosen
+  over Drizzle, Prisma and Kysely to stay simple and close to SQL. TypeORM and
+  MikroORM are not an option: decorators are not erasable syntax.
+- Migrations are plain SQL files in `migrations/`, applied in name order by a
+  small runner in `src/db/migrate.ts` that records them in `schema_migrations`.
+  No `down` migrations, checksums or locks until they are needed;
+  `node-pg-migrate` is the fallback.
+- Primary keys are `uuid` generated with `uuidv7()` (PostgreSQL 18+):
+  time-ordered, not enumerable, and clients can generate them offline later.
 
 ### Proposed, not decided
 
@@ -107,7 +118,6 @@ Introduce each one only when its roadmap step arrives, and explain the
 alternatives first.
 
 - Give more alternatives than the ones below:
-- PostgreSQL, Drizzle ORM and drizzle-kit for migrations
 - Zod for input validation
 - Vitest for tests
 - Better Auth for authentication
@@ -121,6 +131,7 @@ alternatives first.
 
 - Generating a Swift client from an OpenAPI spec. The iOS client will be hand-written.
 - Docker, until deploy.
+- Drizzle ORM and drizzle-kit, in favour of `pg` with plain SQL (see Decided).
 
 ## 6. Roadmap
 
