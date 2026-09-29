@@ -10,14 +10,17 @@ Full context, scope, roadmap and decisions: @docs/project-brief.md
 
 Node 24 (.nvmrc, nvm), TypeScript 6, Express 5, ESLint + Prettier,
 PostgreSQL 18 with `pg` and hand-written SQL, migrations as SQL files in
-`migrations/` applied by `src/db/migrate.ts`.
+`migrations/` applied by `src/db/migrate.ts`, Zod 4 for input validation.
 
-Validation, tests and auth are not decided yet. Do not introduce them unless
-asked, and explain the alternatives first.
+Tests and auth are not decided yet. Do not introduce them unless asked, and
+explain the alternatives first.
+
+API conventions (camelCase JSON, status codes, error shape, `ORGANIZATION_ID`
+placeholder until auth) are in the brief, section 5.
 
 ## Commands
 
-npm run dev | npm run typecheck | npm run lint | npm run db:migrate
+npm run dev | npm run typecheck | npm run lint | npm run db:migrate | npm run db:seed
 
 ## Git: the human owns it
 

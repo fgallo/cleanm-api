@@ -111,6 +111,27 @@ more than one property.
   `node-pg-migrate` is the fallback.
 - Primary keys are `uuid` generated with `uuidv7()` (PostgreSQL 18+):
   time-ordered, not enumerable, and clients can generate them offline later.
+- Zod 4 for input validation. One schema per route body or params, the
+  TypeScript type is inferred from it. Chosen over Valibot and hand-written
+  checks: validation is boilerplate, not something worth writing by hand.
+
+### API conventions
+
+- JSON bodies and responses, camelCase keys (`createdAt`); the SQL aliases
+  snake_case columns to camelCase.
+- Status codes: `201` create, `200` read and update, `204` delete, `400`
+  invalid input or JSON, `404` not found, `500` unexpected.
+- Errors always have the shape
+  `{ "error": { "code", "message", "issues"?: [{ "path", "message" }] } }`
+  with `code` in `validation_error`, `invalid_json`, `not_found`, `internal_error`.
+- Partial updates use `PATCH`; a field set to `null` clears it.
+- Until authentication exists (step 6), the organization comes from
+  `ORGANIZATION_ID` in the environment, set by `src/http/organization.ts` on
+  `res.locals.organizationId`. That middleware is the only place to replace.
+  `npm run db:seed` creates the development organization and prints its id.
+- Layers: `routes` (HTTP, validation, status codes) and `repository` (SQL,
+  always filtered by `organization_id`). A `service` layer appears with the
+  first business rule, not before.
 
 ### Proposed, not decided
 
@@ -118,7 +139,6 @@ Introduce each one only when its roadmap step arrives, and explain the
 alternatives first.
 
 - Give more alternatives than the ones below:
-- Zod for input validation
 - Vitest for tests
 - Better Auth for authentication
 - `@react-pdf/renderer` for invoice PDFs
