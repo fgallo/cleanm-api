@@ -14,6 +14,9 @@ export default defineConfig(
         "error",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
       ],
+      // `declare global { namespace Express { ... } }` is how Express types
+      // are extended; a namespace with actual code is still an error.
+      "@typescript-eslint/no-namespace": ["error", { allowDeclarations: true }],
     },
   },
 );

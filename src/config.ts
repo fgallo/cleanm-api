@@ -23,4 +23,5 @@ function integer(name: string, fallback: number): number {
 export const config = {
   port: integer("PORT", 3000),
   databaseUrl: required("DATABASE_URL"),
+  organizationId: required("ORGANIZATION_ID"),
 };
