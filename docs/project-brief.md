@@ -74,7 +74,10 @@ more than one property.
 ### Design rules
 
 1. `organization_id` on every table from the first migration. This is the only
-   multi-tenant concession made now.
+   multi-tenant concession made now. Foreign keys between tenant tables are
+   composite, `(organization_id, x_id) REFERENCES x (organization_id, id)`, so
+   the database itself refuses a row that points at another organization's
+   data. Each referenced table gets a `UNIQUE (organization_id, id)`.
 2. Job status is `estimated -> scheduled -> completed | cancelled`.
    "Modified" is an event, not a status: use `updated_at`, plus a `job_events`
    table if history is wanted.
