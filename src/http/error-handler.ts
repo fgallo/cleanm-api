@@ -1,4 +1,5 @@
 import type { ErrorRequestHandler, RequestHandler } from "express";
+import { ZodError } from "zod";
 
 import { HttpError } from "./errors.ts";
 
@@ -13,6 +14,20 @@ export const notFoundHandler: RequestHandler = (req, res) => {
 
 // Express only treats a function with four parameters as an error handler.
 export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
+  if (error instanceof ZodError) {
+    res.status(400).json({
+      error: {
+        code: "validation_error",
+        message: "Invalid request",
+        issues: error.issues.map((issue) => ({
+          path: issue.path.map(String).join("."),
+          message: issue.message,
+        })),
+      },
+    });
+    return;
+  }
+
   if (error instanceof HttpError) {
     res
       .status(error.status)
