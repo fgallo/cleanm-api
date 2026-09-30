@@ -1,27 +1,8 @@
-function required(name: string): string {
-  const value = process.env[name];
-  if (value === undefined || value === "") {
-    throw new Error(`Missing required environment variable ${name}`);
-  }
-  return value;
-}
+import { integerEnv, requiredEnv } from "./env.ts";
 
-function integer(name: string, fallback: number): number {
-  const value = process.env[name];
-  if (value === undefined || value === "") {
-    return fallback;
-  }
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed)) {
-    throw new Error(
-      `Environment variable ${name} must be an integer, got "${value}"`,
-    );
-  }
-  return parsed;
-}
-
+// Server configuration. The database reads its own DATABASE_URL in
+// src/db/pool.ts, so scripts like db:migrate do not depend on this.
 export const config = {
-  port: integer("PORT", 3000),
-  databaseUrl: required("DATABASE_URL"),
-  organizationId: required("ORGANIZATION_ID"),
+  port: integerEnv("PORT", 3000),
+  organizationId: requiredEnv("ORGANIZATION_ID"),
 };
