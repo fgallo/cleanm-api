@@ -7,4 +7,13 @@ export default defineConfig(
   js.configs.recommended,
   tseslint.configs.recommended,
   prettier,
+  {
+    rules: {
+      // A leading underscore marks a parameter as intentionally unused.
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
+    },
+  },
 );
