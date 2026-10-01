@@ -48,14 +48,19 @@ JSON in and out, camelCase keys. Errors always look like
 `{ "error": { "code": "...", "message": "...", "issues": [...] } }`, where
 `issues` (path and message per field) is present for `validation_error`.
 
-| Method and path       | Body                            | Response       |
-| --------------------- | ------------------------------- | -------------- |
-| `GET /health`         |                                 | `200`          |
-| `GET /clients`        |                                 | `200` list     |
-| `POST /clients`       | `{ name, email?, phone? }`      | `201` client   |
-| `GET /clients/:id`    |                                 | `200` or `404` |
-| `PATCH /clients/:id`  | any of `name`, `email`, `phone` | `200` or `404` |
-| `DELETE /clients/:id` |                                 | `204` or `404` |
+| Method and path                      | Body                            | Response                |
+| ------------------------------------ | ------------------------------- | ----------------------- |
+| `GET /health`                        |                                 | `200`                   |
+| `GET /clients`                       |                                 | `200` list              |
+| `POST /clients`                      | `{ name, email?, phone? }`      | `201` client            |
+| `GET /clients/:id`                   |                                 | `200` or `404`          |
+| `PATCH /clients/:id`                 | any of `name`, `email`, `phone` | `200` or `404`          |
+| `DELETE /clients/:id`                |                                 | `204` or `404`          |
+| `GET /clients/:clientId/properties`  |                                 | `200` list or `404`     |
+| `POST /clients/:clientId/properties` | property fields, see below      | `201` property or `404` |
+| `GET /properties/:id`                |                                 | `200` or `404`          |
+| `PATCH /properties/:id`              | any of the property fields      | `200` or `404`          |
+| `DELETE /properties/:id`             |                                 | `204` or `404`          |
 
 In a `PATCH`, fields left out are unchanged and `null` clears a field.
 Invalid input answers `400 validation_error`; a malformed body answers
@@ -66,6 +71,20 @@ curl -X POST localhost:3000/clients \
   -H 'content-type: application/json' \
   -d '{"name":"Jane Doe","email":"jane@example.com"}'
 # {"id":"...","name":"Jane Doe","email":"jane@example.com","phone":null,"createdAt":"...","updatedAt":"..."}
+```
+
+A property is an address where jobs happen, and it belongs to one client. The
+collection is nested under the client (`404` when the client does not exist), a
+single property is addressed by its own id, and deleting a client deletes its
+properties. Property fields: `addressLine1`, `city`, `province` and
+`postalCode` are required; `addressLine2`, `notes` and `country` (two-letter
+code, default `CA`) are optional.
+
+```sh
+curl -X POST localhost:3000/clients/$CLIENT_ID/properties \
+  -H 'content-type: application/json' \
+  -d '{"addressLine1":"123 Example St","city":"Toronto","province":"ON","postalCode":"M5V 0A1"}'
+# {"id":"...","clientId":"...","addressLine1":"123 Example St","addressLine2":null,"city":"Toronto","province":"ON","postalCode":"M5V 0A1","country":"CA","notes":null,"createdAt":"...","updatedAt":"..."}
 ```
 
 ## Database
