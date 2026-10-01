@@ -128,6 +128,11 @@ more than one property.
   `{ "error": { "code", "message", "issues"?: [{ "path", "message" }] } }`
   with `code` in `validation_error`, `invalid_json`, `not_found`, `internal_error`.
 - Partial updates use `PATCH`; a field set to `null` clears it.
+- Child resources use shallow nesting: the collection lives under its parent
+  (`/clients/:clientId/properties`, `404` when the parent does not exist) and a
+  single item is addressed by its own id (`/properties/:id`). Chosen over fully
+  nested and flat URLs: ids are globally unique, and a parent in the URL keeps
+  `404` as the only answer for a parent that does not exist.
 - Until authentication exists (step 6), the organization comes from
   `ORGANIZATION_ID` in the environment, set by `src/http/organization.ts` on
   `res.locals.organizationId`. That middleware is the only place to replace.
