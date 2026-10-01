@@ -17,12 +17,15 @@
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.9.8",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.70.1"
+    "typescript-eslint": "^8.70.1",
+    "vitest": "^5.0.3"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "lint": "eslint . && prettier --check .",
     "lint:fix": "eslint --fix . && prettier --write .",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "dev": "node --env-file-if-exists=.env --watch src/server.ts",
     "start": "node --env-file-if-exists=.env src/server.ts",
     "db:migrate": "node --env-file-if-exists=.env src/db/migrate.ts",
