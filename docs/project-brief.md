@@ -51,14 +51,15 @@ multi-tenant signup and billing.
 ## 3. Domain notes
 
 - Recurring clients are weekly, biweekly or monthly.
+- "Monthly" exists in two forms, both in use (confirmed with the business owner
+  on 2026-10-01): every 4 weeks (13 visits per year) and a fixed position in
+  the month, such as the first Tuesday (12 visits per year). Recurrence must
+  support both.
 - Saturday and Sunday jobs happen occasionally. No special handling: a job is a date.
   A one-off weekend job is simply a job with no series.
 - Planned approach for recurrence: a `recurring_series` row materializes concrete
   job rows about 8 weeks ahead. Each job is then independently editable.
   No RRULE engine in the MVP.
-- **Open question:** does "monthly" mean every 4 weeks (13 visits per year) or a
-  fixed position in the month, such as the first Tuesday (12 visits per year)?
-  Confirm with the business owner before implementing recurrence.
 
 ## 4. Data model sketch
 
