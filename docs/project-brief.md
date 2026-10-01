@@ -117,6 +117,16 @@ more than one property.
 - Zod 4 for input validation. One schema per route body or params, the
   TypeScript type is inferred from it. Chosen over Valibot and hand-written
   checks: validation is boilerplate, not something worth writing by hand.
+- Vitest 5 for tests. Chosen over `node:test`, Jest, Mocha and AVA for being
+  the most used and for running TypeScript and ESM without configuration;
+  `cleanm-web` will share it.
+- Endpoint tests start the real app on a free port and call it with the native
+  `fetch` (helper in `test/api.ts`). Chosen over supertest: the same HTTP round
+  trip without a dependency.
+- Tests run against a real PostgreSQL database, `cleanm_test`. Chosen over
+  pg-mem and Testcontainers: the SQL is hand-written and uses PostgreSQL 18
+  features, and Docker is dropped until deploy. Each test file creates its own
+  organization, so files run in parallel on the same database.
 
 ### API conventions
 
@@ -147,7 +157,6 @@ Introduce each one only when its roadmap step arrives, and explain the
 alternatives first.
 
 - Give more alternatives than the ones below:
-- Vitest for tests
 - Better Auth for authentication
 - `@react-pdf/renderer` for invoice PDFs
 - Web: React, Vite, TanStack Query, Tailwind, shadcn/ui, FullCalendar

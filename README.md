@@ -98,6 +98,25 @@ To add a migration, create the next numbered file and run `npm run db:migrate`.
 There are no down migrations; to start over locally,
 `dropdb cleanm_dev && createdb cleanm_dev`.
 
+## Tests
+
+Endpoint tests run with Vitest against a real PostgreSQL database, separate
+from the development one. Create it once, then run the tests:
+
+```sh
+createdb cleanm_test
+npm test
+```
+
+Each run applies pending migrations to the test database first. A test file
+starts the app on a free port, serving an organization created for that file,
+and calls it with `fetch`; each test starts with no clients. Nothing is read
+from `.env`: the database is `postgres://localhost:5432/cleanm_test` unless
+`TEST_DATABASE_URL` is set.
+
+Tests live next to the code they cover, as `*.test.ts`. The shared helper is
+`test/api.ts`.
+
 ## Scripts
 
 | Script               | What it does                                              |
@@ -107,6 +126,8 @@ There are no down migrations; to start over locally,
 | `npm run typecheck`  | Type-checks with `tsc`, no output files                   |
 | `npm run lint`       | Runs ESLint and checks formatting with Prettier           |
 | `npm run lint:fix`   | Fixes what ESLint can fix and formats files with Prettier |
+| `npm test`           | Runs the tests once against the test database             |
+| `npm run test:watch` | Runs the tests again when a file changes                  |
 | `npm run db:migrate` | Applies pending SQL migrations to `DATABASE_URL`          |
 | `npm run db:seed`    | Creates the development organization and prints its id    |
 
