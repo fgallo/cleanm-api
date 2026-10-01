@@ -1,3 +1,4 @@
+import { buildSetClause } from "../db/patch.ts";
 import { pool } from "../db/pool.ts";
 import { single } from "../db/rows.ts";
 
@@ -19,7 +20,11 @@ export type NewClient = {
 // Only the keys present are updated; null clears a field.
 export type ClientPatch = Partial<NewClient>;
 
-const patchableColumns = ["name", "email", "phone"] as const;
+const patchableColumns: Record<keyof ClientPatch, string> = {
+  name: "name",
+  email: "email",
+  phone: "phone",
+};
 
 const columns = `
   id,
@@ -67,25 +72,17 @@ export async function updateClient(
   id: string,
   patch: ClientPatch,
 ): Promise<Client | undefined> {
-  const assignments: string[] = [];
-  const values: unknown[] = [organizationId, id];
-  for (const column of patchableColumns) {
-    const value = patch[column];
-    if (value !== undefined) {
-      values.push(value);
-      assignments.push(`${column} = $${values.length}`);
-    }
-  }
-  if (assignments.length === 0) {
+  const set = buildSetClause(patch, patchableColumns, 3);
+  if (set.values.length === 0) {
     return findClient(organizationId, id);
   }
 
   const { rows } = await pool.query<Client>(
     `UPDATE clients
-     SET ${assignments.join(", ")}, updated_at = now()
+     SET ${set.assignments}, updated_at = now()
      WHERE organization_id = $1 AND id = $2
      RETURNING ${columns}`,
-    values,
+    [organizationId, id, ...set.values],
   );
   return rows[0];
 }
