@@ -1,7 +1,8 @@
 import type { ErrorRequestHandler, RequestHandler } from "express";
+import { DatabaseError } from "pg";
 import { ZodError } from "zod";
 
-import { HttpError } from "./errors.ts";
+import { HttpError, ValidationError } from "./errors.ts";
 
 export const notFoundHandler: RequestHandler = (req, res) => {
   res.status(404).json({
@@ -28,6 +29,13 @@ export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
     return;
   }
 
+  if (error instanceof ValidationError) {
+    res.status(error.status).json({
+      error: { code: error.code, message: error.message, issues: error.issues },
+    });
+    return;
+  }
+
   if (error instanceof HttpError) {
     res
       .status(error.status)
@@ -40,6 +48,18 @@ export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
       error: {
         code: "invalid_json",
         message: "Request body is not valid JSON",
+      },
+    });
+    return;
+  }
+
+  // A row that other rows still reference cannot be deleted. Only deletes
+  // raise this: inserts select the referenced row first instead.
+  if (error instanceof DatabaseError && error.code === "23503") {
+    res.status(409).json({
+      error: {
+        code: "conflict",
+        message: `Cannot delete: still referenced by ${error.table ?? "other records"}`,
       },
     });
     return;
