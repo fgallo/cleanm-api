@@ -22,15 +22,14 @@ export async function createOrganization(): Promise<string> {
   return id;
 }
 
-// Jobs first, because a property with jobs cannot be deleted; deleting the
-// clients then cascades to their properties.
+// Jobs first, because a property or helper with jobs cannot be deleted;
+// deleting the clients then cascades to their properties.
 async function deleteData(): Promise<void> {
-  await pool.query("DELETE FROM jobs WHERE organization_id = ANY($1)", [
-    organizationIds,
-  ]);
-  await pool.query("DELETE FROM clients WHERE organization_id = ANY($1)", [
-    organizationIds,
-  ]);
+  for (const table of ["jobs", "clients", "helpers"]) {
+    await pool.query(`DELETE FROM ${table} WHERE organization_id = ANY($1)`, [
+      organizationIds,
+    ]);
+  }
 }
 
 // Call once at the top of a test file. Starts the app on a free port, serving
