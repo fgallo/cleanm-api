@@ -221,4 +221,39 @@ describe("DELETE /clients/:id", () => {
 
     expect(res.status).toBe(404);
   });
+
+  it("answers 409 when the client has jobs, so history is kept", async () => {
+    const client = await createClient();
+    const property = await api.post<{ id: string }>(
+      `/clients/${client.id}/properties`,
+      {
+        addressLine1: "123 Example St",
+        city: "Toronto",
+        province: "ON",
+        postalCode: "M5V 0A1",
+      },
+    );
+    const job = await api.post("/jobs", {
+      propertyId: property.body.id,
+      scheduledDate: "2026-10-14",
+      startTime: "09:00",
+      durationMinutes: 60,
+      serviceType: "regular",
+      hourlyRateCents: 4500,
+    });
+    expect(job.status).toBe(201);
+
+    const res = await api.delete(`/clients/${client.id}`);
+
+    expect(res).toEqual({
+      status: 409,
+      body: {
+        error: {
+          code: "conflict",
+          message: "Cannot delete: still referenced by jobs",
+        },
+      },
+    });
+    expect((await api.get(`/clients/${client.id}`)).status).toBe(200);
+  });
 });
