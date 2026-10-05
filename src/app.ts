@@ -1,6 +1,7 @@
 import express from "express";
 
 import { clientsRouter } from "./clients/routes.ts";
+import { helpersRouter } from "./helpers/routes.ts";
 import { errorHandler, notFoundHandler } from "./http/error-handler.ts";
 import { resolveOrganization } from "./http/organization.ts";
 import { jobsRouter } from "./jobs/routes.ts";
@@ -19,6 +20,7 @@ app.get("/health", (_req, res) => {
 app.use("/clients", clientsRouter);
 app.use(propertiesRouter);
 app.use("/jobs", jobsRouter);
+app.use("/helpers", helpersRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
