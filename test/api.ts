@@ -22,8 +22,12 @@ export async function createOrganization(): Promise<string> {
   return id;
 }
 
-// Deleting the clients cascades to everything that belongs to them.
-async function deleteClients(): Promise<void> {
+// Jobs first, because a property with jobs cannot be deleted; deleting the
+// clients then cascades to their properties.
+async function deleteData(): Promise<void> {
+  await pool.query("DELETE FROM jobs WHERE organization_id = ANY($1)", [
+    organizationIds,
+  ]);
   await pool.query("DELETE FROM clients WHERE organization_id = ANY($1)", [
     organizationIds,
   ]);
@@ -43,11 +47,11 @@ export async function startApi() {
   const { port } = server.address() as AddressInfo;
   const baseUrl = `http://localhost:${port}`;
 
-  beforeEach(deleteClients);
+  beforeEach(deleteData);
 
   afterAll(async () => {
     await new Promise((resolve) => server.close(resolve));
-    await deleteClients();
+    await deleteData();
     await pool.query("DELETE FROM organizations WHERE id = ANY($1)", [
       organizationIds,
     ]);
