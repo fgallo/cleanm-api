@@ -66,6 +66,11 @@ JSON in and out, camelCase keys. Errors always look like
 | `GET /jobs/:id`                      |                                           | `200` or `404`          |
 | `PATCH /jobs/:id`                    | any of the job fields except `propertyId` | `200` or `404`          |
 | `DELETE /jobs/:id`                   |                                           | `204` or `404`          |
+| `GET /helpers`                       |                                           | `200` list              |
+| `POST /helpers`                      | `{ name, phone? }`                        | `201` helper            |
+| `GET /helpers/:id`                   |                                           | `200` or `404`          |
+| `PATCH /helpers/:id`                 | any of `name`, `phone`, `active`          | `200` or `404`          |
+| `DELETE /helpers/:id`                |                                           | `204`, `404` or `409`   |
 
 In a `PATCH`, fields left out are unchanged and `null` clears a field.
 Invalid input answers `400 validation_error`; a malformed body answers
@@ -96,21 +101,27 @@ curl -X POST localhost:3000/clients/$CLIENT_ID/properties \
 
 A job is a visit to a property on a day of the organization's calendar. The
 list takes an inclusive date range (`from` and `to` as `YYYY-MM-DD`), ordered
-by date and time, and every job comes with its `property` and `client`
-embedded. Job fields: `propertyId`, `scheduledDate` (`YYYY-MM-DD`),
-`startTime` (`HH:MM`), `durationMinutes`, `serviceType` (`regular`, `deep`,
-`move_in`, `move_out`) and `hourlyRateCents` are required; `status`
-(`estimated`, `scheduled`, `completed`, `cancelled`; default `scheduled`),
-`fixedPriceCents` and `notes` are optional. `priceCents` is derived: the fixed
-price when set, otherwise hourly rate × duration. A `POST` with a
-`propertyId` that does not exist answers `400 validation_error` on that field.
+by date and time, and every job comes with its `property`, `client` and
+`helper` (or `null`) embedded. Job fields: `propertyId`, `scheduledDate`
+(`YYYY-MM-DD`), `startTime` (`HH:MM`), `durationMinutes`, `serviceType`
+(`regular`, `deep`, `move_in`, `move_out`) and `hourlyRateCents` are required;
+`status` (`estimated`, `scheduled`, `completed`, `cancelled`; default
+`scheduled`), `fixedPriceCents`, `helperId` and `notes` are optional.
+`priceCents` is derived: the fixed price when set, otherwise hourly rate ×
+duration. A `propertyId` or `helperId` that does not exist, or a helper that
+is not active, answers `400 validation_error` on that field.
 
 ```sh
 curl -X POST localhost:3000/jobs \
   -H 'content-type: application/json' \
   -d '{"propertyId":"'$PROPERTY_ID'","scheduledDate":"2026-10-14","startTime":"09:00","durationMinutes":150,"serviceType":"regular","hourlyRateCents":4500}'
-# {"id":"...","scheduledDate":"2026-10-14","startTime":"09:00:00","durationMinutes":150,"serviceType":"regular","status":"scheduled","hourlyRateCents":4500,"fixedPriceCents":null,"priceCents":11250,"notes":null,"property":{...},"client":{"id":"...","name":"Jane Doe"},"createdAt":"...","updatedAt":"..."}
+# {"id":"...","scheduledDate":"2026-10-14","startTime":"09:00:00","durationMinutes":150,"serviceType":"regular","status":"scheduled","hourlyRateCents":4500,"fixedPriceCents":null,"priceCents":11250,"notes":null,"property":{...},"client":{"id":"...","name":"Jane Doe"},"helper":null,"createdAt":"...","updatedAt":"..."}
 ```
+
+A helper is a person who does the cleaning and can be assigned to a job. A
+helper with jobs cannot be deleted (`409`); one who left the business is
+deactivated with `active: false` instead, which keeps the history and stops
+new assignments. The list includes inactive helpers.
 
 ## Database
 
@@ -139,8 +150,8 @@ and calls it with `fetch`; each test starts with no clients. Nothing is read
 from `.env`: the database is `postgres://localhost:5432/cleanm_test` unless
 `TEST_DATABASE_URL` is set.
 
-Tests live next to the code they cover, as `*.test.ts`. The shared helper is
-`test/api.ts`.
+Tests live next to the code they cover, as `*.test.ts`. The shared test setup
+is `test/api.ts`.
 
 ## Scripts
 

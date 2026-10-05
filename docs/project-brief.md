@@ -96,7 +96,8 @@ more than one property.
    Ontario and businesses that are not registered.
 6. Rows that other rows reference are never deleted in cascade (a property
    with jobs, later a job with an invoice): the API answers `409 conflict`, so
-   history is kept.
+   history is kept. Where a row must still be retired, it gets a flag instead
+   (`helpers.active`).
 
 ## 5. Stack
 
