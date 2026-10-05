@@ -35,6 +35,7 @@ export type Job = {
     notes: string | null;
   };
   client: { id: string; name: string };
+  helper: { id: string; name: string } | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -48,6 +49,7 @@ export type NewJob = {
   status?: JobStatus;
   hourlyRateCents: number;
   fixedPriceCents?: number | null;
+  helperId?: string | null;
   notes?: string | null;
 };
 
@@ -63,11 +65,12 @@ const patchableColumns: Record<keyof JobPatch, string> = {
   status: "status",
   hourlyRateCents: "hourly_rate_cents",
   fixedPriceCents: "fixed_price_cents",
+  helperId: "helper_id",
   notes: "notes",
 };
 
-// Every read joins the property and its client: the calendar shows them with
-// each job, and a separate request per job would be wasteful.
+// Every read joins the property, its client and the helper: the calendar
+// shows them with each job, and a separate request per job would be wasteful.
 const columns = `
   j.id,
   j.scheduled_date AS "scheduledDate",
@@ -93,6 +96,9 @@ const columns = `
     'notes', p.notes
   ) AS property,
   json_build_object('id', c.id, 'name', c.name) AS client,
+  CASE WHEN h.id IS NULL THEN NULL
+       ELSE json_build_object('id', h.id, 'name', h.name)
+  END AS helper,
   j.created_at AS "createdAt",
   j.updated_at AS "updatedAt"
 `;
@@ -102,6 +108,8 @@ const joins = `
     ON p.organization_id = j.organization_id AND p.id = j.property_id
   JOIN clients c
     ON c.organization_id = p.organization_id AND c.id = p.client_id
+  LEFT JOIN helpers h
+    ON h.organization_id = j.organization_id AND h.id = j.helper_id
 `;
 
 export async function listJobs(
@@ -141,10 +149,10 @@ export async function createJob(
        INSERT INTO jobs (
          organization_id, property_id, scheduled_date, start_time,
          duration_minutes, service_type, status, hourly_rate_cents,
-         fixed_price_cents, notes
+         fixed_price_cents, helper_id, notes
        )
        SELECT organization_id, id, $3, $4, $5, $6, COALESCE($7, 'scheduled'),
-              $8, $9, $10
+              $8, $9, $10, $11
        FROM properties
        WHERE organization_id = $1 AND id = $2
        RETURNING *
@@ -160,6 +168,7 @@ export async function createJob(
       input.status ?? null,
       input.hourlyRateCents,
       input.fixedPriceCents ?? null,
+      input.helperId ?? null,
       input.notes ?? null,
     ],
   );
