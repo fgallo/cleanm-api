@@ -18,6 +18,8 @@ export const createJobSchema = z.object({
   hourlyRateCents: cents,
   // null means the price is hourly rate x duration.
   fixedPriceCents: cents.nullable().optional(),
+  // null means nobody is assigned yet.
+  helperId: z.uuid().nullable().optional(),
   notes: notes.optional(),
 });
 
