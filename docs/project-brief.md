@@ -83,13 +83,20 @@ more than one property.
    table if history is wanted.
 3. Do not store "invoice generated" or "paid" booleans. Derive them: a job is
    invoiced if it has an `invoice_id`; an invoice is paid if its payments cover
-   the total. Store `paid_at` and `method` on payments.
+   the total. Store `paid_at` and `method` on payments. The same for a job's
+   price: `fixed_price_cents` when a price was agreed, otherwise
+   `hourly_rate_cents` × `duration_minutes` / 60, computed in the query.
 4. Money as integer cents. Timestamps as `timestamptz` in UTC. The organization
-   has a timezone field.
+   has a timezone field. A job's day and start time are `date` and `time`
+   without time zone: a job is a slot on the organization's calendar, not an
+   instant.
 5. Invoices keep a snapshot of the amounts, have a sequential number per
    organization, and are immutable once issued. Tax is configured per
    organization (rate and registration number), which covers both 13% HST in
    Ontario and businesses that are not registered.
+6. Rows that other rows reference are never deleted in cascade (a property
+   with jobs, later a job with an invoice): the API answers `409 conflict`, so
+   history is kept.
 
 ## 5. Stack
 
@@ -133,10 +140,13 @@ more than one property.
 - JSON bodies and responses, camelCase keys (`createdAt`); the SQL aliases
   snake_case columns to camelCase.
 - Status codes: `201` create, `200` read and update, `204` delete, `400`
-  invalid input or JSON, `404` not found, `500` unexpected.
+  invalid input or JSON, `404` not found, `409` delete refused because other
+  records still reference the row, `500` unexpected.
 - Errors always have the shape
   `{ "error": { "code", "message", "issues"?: [{ "path", "message" }] } }`
-  with `code` in `validation_error`, `invalid_json`, `not_found`, `internal_error`.
+  with `code` in `validation_error`, `invalid_json`, `not_found`, `conflict`,
+  `internal_error`. An id in the body that points at nothing (such as
+  `propertyId` on `POST /jobs`) is a `validation_error` on that field.
 - Partial updates use `PATCH`; a field set to `null` clears it.
 - Child resources use shallow nesting: the collection lives under its parent
   (`/clients/:clientId/properties`, `404` when the parent does not exist) and a
