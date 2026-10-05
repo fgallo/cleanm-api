@@ -48,23 +48,30 @@ JSON in and out, camelCase keys. Errors always look like
 `{ "error": { "code": "...", "message": "...", "issues": [...] } }`, where
 `issues` (path and message per field) is present for `validation_error`.
 
-| Method and path                      | Body                            | Response                |
-| ------------------------------------ | ------------------------------- | ----------------------- |
-| `GET /health`                        |                                 | `200`                   |
-| `GET /clients`                       |                                 | `200` list              |
-| `POST /clients`                      | `{ name, email?, phone? }`      | `201` client            |
-| `GET /clients/:id`                   |                                 | `200` or `404`          |
-| `PATCH /clients/:id`                 | any of `name`, `email`, `phone` | `200` or `404`          |
-| `DELETE /clients/:id`                |                                 | `204` or `404`          |
-| `GET /clients/:clientId/properties`  |                                 | `200` list or `404`     |
-| `POST /clients/:clientId/properties` | property fields, see below      | `201` property or `404` |
-| `GET /properties/:id`                |                                 | `200` or `404`          |
-| `PATCH /properties/:id`              | any of the property fields      | `200` or `404`          |
-| `DELETE /properties/:id`             |                                 | `204` or `404`          |
+| Method and path                      | Body                                      | Response                |
+| ------------------------------------ | ----------------------------------------- | ----------------------- |
+| `GET /health`                        |                                           | `200`                   |
+| `GET /clients`                       |                                           | `200` list              |
+| `POST /clients`                      | `{ name, email?, phone? }`                | `201` client            |
+| `GET /clients/:id`                   |                                           | `200` or `404`          |
+| `PATCH /clients/:id`                 | any of `name`, `email`, `phone`           | `200` or `404`          |
+| `DELETE /clients/:id`                |                                           | `204` or `404`          |
+| `GET /clients/:clientId/properties`  |                                           | `200` list or `404`     |
+| `POST /clients/:clientId/properties` | property fields, see below                | `201` property or `404` |
+| `GET /properties/:id`                |                                           | `200` or `404`          |
+| `PATCH /properties/:id`              | any of the property fields                | `200` or `404`          |
+| `DELETE /properties/:id`             |                                           | `204`, `404` or `409`   |
+| `GET /jobs?from=&to=`                |                                           | `200` list              |
+| `POST /jobs`                         | job fields, see below                     | `201` job               |
+| `GET /jobs/:id`                      |                                           | `200` or `404`          |
+| `PATCH /jobs/:id`                    | any of the job fields except `propertyId` | `200` or `404`          |
+| `DELETE /jobs/:id`                   |                                           | `204` or `404`          |
 
 In a `PATCH`, fields left out are unchanged and `null` clears a field.
 Invalid input answers `400 validation_error`; a malformed body answers
-`400 invalid_json`.
+`400 invalid_json`. Deleting something that other records still reference,
+such as a client or a property with jobs, answers `409 conflict`: history is
+never lost.
 
 ```sh
 curl -X POST localhost:3000/clients \
@@ -76,15 +83,33 @@ curl -X POST localhost:3000/clients \
 A property is an address where jobs happen, and it belongs to one client. The
 collection is nested under the client (`404` when the client does not exist), a
 single property is addressed by its own id, and deleting a client deletes its
-properties. Property fields: `addressLine1`, `city`, `province` and
-`postalCode` are required; `addressLine2`, `notes` and `country` (two-letter
-code, default `CA`) are optional.
+properties (unless they have jobs). Property fields: `addressLine1`, `city`,
+`province` and `postalCode` are required; `addressLine2`, `notes` and
+`country` (two-letter code, default `CA`) are optional.
 
 ```sh
 curl -X POST localhost:3000/clients/$CLIENT_ID/properties \
   -H 'content-type: application/json' \
   -d '{"addressLine1":"123 Example St","city":"Toronto","province":"ON","postalCode":"M5V 0A1"}'
 # {"id":"...","clientId":"...","addressLine1":"123 Example St","addressLine2":null,"city":"Toronto","province":"ON","postalCode":"M5V 0A1","country":"CA","notes":null,"createdAt":"...","updatedAt":"..."}
+```
+
+A job is a visit to a property on a day of the organization's calendar. The
+list takes an inclusive date range (`from` and `to` as `YYYY-MM-DD`), ordered
+by date and time, and every job comes with its `property` and `client`
+embedded. Job fields: `propertyId`, `scheduledDate` (`YYYY-MM-DD`),
+`startTime` (`HH:MM`), `durationMinutes`, `serviceType` (`regular`, `deep`,
+`move_in`, `move_out`) and `hourlyRateCents` are required; `status`
+(`estimated`, `scheduled`, `completed`, `cancelled`; default `scheduled`),
+`fixedPriceCents` and `notes` are optional. `priceCents` is derived: the fixed
+price when set, otherwise hourly rate × duration. A `POST` with a
+`propertyId` that does not exist answers `400 validation_error` on that field.
+
+```sh
+curl -X POST localhost:3000/jobs \
+  -H 'content-type: application/json' \
+  -d '{"propertyId":"'$PROPERTY_ID'","scheduledDate":"2026-10-14","startTime":"09:00","durationMinutes":150,"serviceType":"regular","hourlyRateCents":4500}'
+# {"id":"...","scheduledDate":"2026-10-14","startTime":"09:00:00","durationMinutes":150,"serviceType":"regular","status":"scheduled","hourlyRateCents":4500,"fixedPriceCents":null,"priceCents":11250,"notes":null,"property":{...},"client":{"id":"...","name":"Jane Doe"},"createdAt":"...","updatedAt":"..."}
 ```
 
 ## Database
