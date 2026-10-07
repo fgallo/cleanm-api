@@ -133,6 +133,7 @@ describe("POST /jobs", () => {
       },
       client: { id: clientId, name: "Jane Doe" },
       helper: null,
+      recurringSeriesId: null,
       createdAt: expect.any(String),
       updatedAt: expect.any(String),
     });
