@@ -19,6 +19,14 @@ export class NotFoundError extends HttpError {
   }
 }
 
+// The request is valid, but the current state does not allow it.
+export class ConflictError extends HttpError {
+  constructor(message: string) {
+    super(409, "conflict", message);
+    this.name = "ConflictError";
+  }
+}
+
 // For input that is well-formed but refers to something that does not exist,
 // such as an id in the body. Answers like a Zod failure, with issues per field.
 export class ValidationError extends HttpError {
