@@ -56,9 +56,20 @@ multi-tenant signup and billing.
   month, such as every 14th (12 visits per year). Recurrence must support both.
 - Saturday and Sunday jobs happen occasionally. No special handling: a job is a date.
   A one-off weekend job is simply a job with no series.
-- Planned approach for recurrence: a `recurring_series` row materializes concrete
-  job rows about 8 weeks ahead. Each job is then independently editable.
-  No RRULE engine in the MVP.
+- Recurrence: a `recurring_series` row (rule plus job template) materializes
+  concrete job rows at least 8 weeks ahead, further when the calendar asks for
+  a later date. Each job is then independently editable, and the owner does
+  edit single visits often. No RRULE engine: two rules, every N weeks and day
+  of month, computed by a pure function (`src/recurring-series/occurrences.ts`).
+  - `generated_until` on the series makes generation idempotent; the
+    generating statement only runs when that value is still what the caller
+    saw, so concurrent requests cannot duplicate visits.
+  - A change to the series template reaches its upcoming unrealized jobs
+    field by field, only where the job still had the previous value, so
+    hand-edited visits are kept.
+  - The rule and the property never change: to change the rhythm, end the
+    series (`end_date`, which removes unrealized visits after it) and create
+    another. A series is deleted only while none of its visits happened.
 
 ## 4. Data model sketch
 
@@ -159,8 +170,10 @@ more than one property.
   `res.locals.organizationId`. That middleware is the only place to replace.
   `npm run db:seed` creates the development organization and prints its id.
 - Layers: `routes` (HTTP, validation, status codes) and `repository` (SQL,
-  always filtered by `organization_id`). A `service` layer appears with the
-  first business rule, not before.
+  always filtered by `organization_id`). A `service` module holds business
+  rules that span several queries; the first one is
+  `src/recurring-series/service.ts`. Modules without such rules have no
+  service.
 
 ### Proposed, not decided
 
