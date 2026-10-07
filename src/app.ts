@@ -6,6 +6,7 @@ import { errorHandler, notFoundHandler } from "./http/error-handler.ts";
 import { resolveOrganization } from "./http/organization.ts";
 import { jobsRouter } from "./jobs/routes.ts";
 import { propertiesRouter } from "./properties/routes.ts";
+import { recurringSeriesRouter } from "./recurring-series/routes.ts";
 
 export const app = express();
 
@@ -21,6 +22,7 @@ app.use("/clients", clientsRouter);
 app.use(propertiesRouter);
 app.use("/jobs", jobsRouter);
 app.use("/helpers", helpersRouter);
+app.use("/recurring-series", recurringSeriesRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
