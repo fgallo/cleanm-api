@@ -71,6 +71,11 @@ JSON in and out, camelCase keys. Errors always look like
 | `GET /helpers/:id`                   |                                           | `200` or `404`          |
 | `PATCH /helpers/:id`                 | any of `name`, `phone`, `active`          | `200` or `404`          |
 | `DELETE /helpers/:id`                |                                           | `204`, `404` or `409`   |
+| `GET /recurring-series`              |                                           | `200` list              |
+| `POST /recurring-series`             | series fields, see below                  | `201` series            |
+| `GET /recurring-series/:id`          |                                           | `200` or `404`          |
+| `PATCH /recurring-series/:id`        | any of the job template fields, `endDate` | `200` or `404`          |
+| `DELETE /recurring-series/:id`       |                                           | `204`, `404` or `409`   |
 
 In a `PATCH`, fields left out are unchanged and `null` clears a field.
 Invalid input answers `400 validation_error`; a malformed body answers
@@ -109,7 +114,8 @@ by date and time, and every job comes with its `property`, `client` and
 `scheduled`), `fixedPriceCents`, `helperId` and `notes` are optional.
 `priceCents` is derived: the fixed price when set, otherwise hourly rate ×
 duration. A `propertyId` or `helperId` that does not exist, or a helper that
-is not active, answers `400 validation_error` on that field.
+is not active, answers `400 validation_error` on that field. Jobs generated
+by a recurring series carry its id in `recurringSeriesId`.
 
 ```sh
 curl -X POST localhost:3000/jobs \
@@ -122,6 +128,31 @@ A helper is a person who does the cleaning and can be assigned to a job. A
 helper with jobs cannot be deleted (`409`); one who left the business is
 deactivated with `active: false` instead, which keeps the history and stops
 new assignments. The list includes inactive helpers.
+
+A recurring series creates the jobs of a recurring client ahead of time: at
+least eight weeks ahead, or as far as the calendar asks for with
+`GET /jobs?to=`. Series fields: `propertyId`, `startDate`, exactly one of
+`everyWeeks` (1 for weekly, 2 for biweekly, 4 for every four weeks, on the
+weekday of `startDate`) or `dayOfMonth` (1 to 31, the last day of shorter
+months), the job template (`startTime`, `durationMinutes`, `serviceType`,
+`hourlyRateCents`, `fixedPriceCents?`, `helperId?`, `notes?`) and an optional
+`endDate`. The rule and the property cannot change: to change the rhythm, end
+the series with `endDate` and create another one.
+
+Each generated job is edited on its own with `PATCH /jobs/:id`, and the
+series never overwrites that: a `PATCH` on the series changes, in its
+upcoming jobs that are still `scheduled` or `estimated`, only the fields that
+still had the series' previous value. Setting `endDate` removes the unrealized
+visits after it; setting it back to `null` resumes generation. A series can be
+deleted, together with its visits, only while none of them was completed or
+cancelled; afterwards it answers `409` and `endDate` is the way to stop it.
+
+```sh
+curl -X POST localhost:3000/recurring-series \
+  -H 'content-type: application/json' \
+  -d '{"propertyId":"'$PROPERTY_ID'","everyWeeks":2,"startDate":"2026-10-13","startTime":"09:00","durationMinutes":150,"serviceType":"regular","hourlyRateCents":4500}'
+# {"id":"...","everyWeeks":2,"dayOfMonth":null,"startDate":"2026-10-13","endDate":null,"generatedUntil":"...","startTime":"09:00:00",...,"property":{...},"client":{...},"helper":null,"createdAt":"...","updatedAt":"..."}
+```
 
 ## Database
 
