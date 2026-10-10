@@ -19,6 +19,13 @@ export class NotFoundError extends HttpError {
   }
 }
 
+export class UnauthorizedError extends HttpError {
+  constructor(message = "Sign in required") {
+    super(401, "unauthorized", message);
+    this.name = "UnauthorizedError";
+  }
+}
+
 // The request is valid, but the current state does not allow it.
 export class ConflictError extends HttpError {
   constructor(message: string) {
