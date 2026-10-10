@@ -146,17 +146,34 @@ more than one property.
   pg-mem and Testcontainers: the SQL is hand-written and uses PostgreSQL 18
   features, and Docker is dropped until deploy. Each test file creates its own
   organization, so files run in parallel on the same database.
+- Authentication is hand-written (`src/auth/`): a `users` table, a `sessions`
+  table holding the SHA-256 of a 256-bit random token, and that token in an
+  `HttpOnly; SameSite=Lax; Secure` cookie. Chosen over Better Auth, Passport,
+  Auth.js and hosted providers: for two admins without OAuth, a library costs
+  more in integration (its own schema, routes, error shape and migrations)
+  than it saves, and the boundary (`src/auth/session.ts`) keeps a later switch
+  cheap. Lucia is deprecated and recommends this same design.
+- Passwords are hashed with `node:crypto` scrypt (N = 2^17, r = 8, p = 1), in
+  a self-describing `scrypt$N$r$p$salt$hash` string. Chosen over Node's
+  `crypto.argon2` (experimental), native argon2 packages (a binary per
+  platform) and bcryptjs (72-byte limit). Argon2id becomes the target once
+  Node's API is stable: `needsRehash` re-hashes on the next sign-in.
+- `helmet` for the standard security headers and `express-rate-limit` for
+  sign-in attempts, by address and by email. Both are the most used; the
+  counters live in memory until there is more than one process.
 
 ### API conventions
 
 - JSON bodies and responses, camelCase keys (`createdAt`); the SQL aliases
   snake_case columns to camelCase.
 - Status codes: `201` create, `200` read and update, `204` delete, `400`
-  invalid input or JSON, `404` not found, `409` delete refused because other
-  records still reference the row, `500` unexpected.
+  invalid input or JSON, `401` no session or wrong credentials, `404` not
+  found, `409` delete refused because other records still reference the row,
+  `429` too many sign-in attempts, `500` unexpected.
 - Errors always have the shape
   `{ "error": { "code", "message", "issues"?: [{ "path", "message" }] } }`
-  with `code` in `validation_error`, `invalid_json`, `not_found`, `conflict`,
+  with `code` in `validation_error`, `invalid_json`, `unauthorized`,
+  `invalid_credentials`, `not_found`, `conflict`, `too_many_requests`,
   `internal_error`. An id in the body that points at nothing (such as
   `propertyId` on `POST /jobs`) is a `validation_error` on that field.
 - Partial updates use `PATCH`; a field set to `null` clears it.
@@ -165,10 +182,12 @@ more than one property.
   single item is addressed by its own id (`/properties/:id`). Chosen over fully
   nested and flat URLs: ids are globally unique, and a parent in the URL keeps
   `404` as the only answer for a parent that does not exist.
-- Until authentication exists (step 6), the organization comes from
-  `ORGANIZATION_ID` in the environment, set by `src/http/organization.ts` on
-  `res.locals.organizationId`. That middleware is the only place to replace.
-  `npm run db:seed` creates the development organization and prints its id.
+- The organization is the signed-in user's: `src/auth/session.ts` turns the
+  session cookie into `res.locals.user` and `res.locals.organizationId`, and
+  `requireSession` guards every route after `/health` and `/auth`. Routes and
+  repositories only read `res.locals`, so that module is the only place to
+  replace if the authentication mechanism ever changes.
+  `npm run db:seed` creates the development organization and its two admins.
 - Layers: `routes` (HTTP, validation, status codes) and `repository` (SQL,
   always filtered by `organization_id`). A `service` module holds business
   rules that span several queries; the first one is
@@ -181,7 +200,6 @@ Introduce each one only when its roadmap step arrives, and explain the
 alternatives first.
 
 - Give more alternatives than the ones below:
-- Better Auth for authentication
 - `@react-pdf/renderer` for invoice PDFs
 - Web: React, Vite, TanStack Query, Tailwind, shadcn/ui, FullCalendar
   (`dayGridMonth` and `timeGridWeek` match the two calendar views)
@@ -239,6 +257,42 @@ public must be treated as public forever.
 2. No real client data. Seeds, tests and screenshots use invented names and addresses.
 3. The repository becomes private before the system goes to production with
    real data (roadmap step 6).
+
+### Security checklist
+
+What authentication already does, and what is still owed before each
+milestone. The design (session cookie plus slow hash) is the one OWASP
+recommends; what makes it safe is this list.
+
+Done in step 6:
+
+- Session token: 256 random bits, only its SHA-256 stored; new token on every
+  sign-in; 30-day expiry; sign-out deletes the row; expired rows are purged.
+- Cookie: `HttpOnly`, `SameSite=Lax`, `Secure` when `NODE_ENV=production`.
+- Passwords: scrypt with OWASP parameters, constant-time comparison, minimum
+  length 8 where a password is set, no other composition rules.
+- Sign-in: one message for wrong email and wrong password, the same response
+  time for both, at most 10 attempts per email and 100 per address in 15
+  minutes.
+- `helmet` headers. Tenant isolation by `organization_id` in every query and
+  composite foreign keys in the database.
+
+Before real data in production (deploy):
+
+- HTTPS only, `NODE_ENV=production`, `app.set("trust proxy", ...)` matching
+  the host so rate limiting sees real addresses.
+- Secrets only in the host's environment; database backups; this repository
+  private; Dependabot version updates enabled.
+- Logs never contain passwords, cookies or tokens.
+
+Before the first external customer:
+
+- Email verification and password reset (needs email sending, out of the
+  MVP), change-password endpoint, 2FA, "sign out everywhere", account
+  lockout, checks against breached-password lists, audit log of changes,
+  data-handling policy (PIPEDA in Canada).
+- Rate limiting with a shared store once there is more than one process.
+- A professional penetration test before selling.
 
 ## 9. Claude Code setup
 

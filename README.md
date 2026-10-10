@@ -21,12 +21,12 @@ createdb cleanm_dev
 ```
 
 Configure the environment, apply the migrations, create the development
-organization and start the server:
+organization with its two admin users, and start the server:
 
 ```sh
-cp .env.example .env
+cp .env.example .env   # then choose SEED_ADMIN_PASSWORD
 npm run db:migrate
-npm run db:seed        # prints ORGANIZATION_ID=...; paste that line into .env
+npm run db:seed        # creates ana@example.com and bruno@example.com
 npm run dev
 ```
 
@@ -35,12 +35,18 @@ Then:
 ```sh
 curl localhost:3000/health
 # {"status":"ok"}
+curl -c cookies.txt -X POST localhost:3000/auth/login \
+  -H 'content-type: application/json' \
+  -d '{"email":"ana@example.com","password":"<SEED_ADMIN_PASSWORD>"}'
+# {"user":{...},"organization":{...}}
+curl -b cookies.txt localhost:3000/clients
+# []
 ```
 
 Configuration comes from environment variables, loaded from `.env` when the
 file exists (see `.env.example`): `PORT` (default `3000`), `DATABASE_URL` and
-`ORGANIZATION_ID`. The last one is a placeholder until authentication exists:
-every request is served for that organization.
+`SEED_ADMIN_PASSWORD` (only read by `npm run db:seed`). `NODE_ENV=production`
+turns on what only works behind HTTPS, such as the `Secure` cookie flag.
 
 ## API
 
@@ -48,34 +54,45 @@ JSON in and out, camelCase keys. Errors always look like
 `{ "error": { "code": "...", "message": "...", "issues": [...] } }`, where
 `issues` (path and message per field) is present for `validation_error`.
 
-| Method and path                      | Body                                      | Response                |
-| ------------------------------------ | ----------------------------------------- | ----------------------- |
-| `GET /health`                        |                                           | `200`                   |
-| `GET /clients`                       |                                           | `200` list              |
-| `POST /clients`                      | `{ name, email?, phone? }`                | `201` client            |
-| `GET /clients/:id`                   |                                           | `200` or `404`          |
-| `PATCH /clients/:id`                 | any of `name`, `email`, `phone`           | `200` or `404`          |
-| `DELETE /clients/:id`                |                                           | `204` or `404`          |
-| `GET /clients/:clientId/properties`  |                                           | `200` list or `404`     |
-| `POST /clients/:clientId/properties` | property fields, see below                | `201` property or `404` |
-| `GET /properties/:id`                |                                           | `200` or `404`          |
-| `PATCH /properties/:id`              | any of the property fields                | `200` or `404`          |
-| `DELETE /properties/:id`             |                                           | `204`, `404` or `409`   |
-| `GET /jobs?from=&to=`                |                                           | `200` list              |
-| `POST /jobs`                         | job fields, see below                     | `201` job               |
-| `GET /jobs/:id`                      |                                           | `200` or `404`          |
-| `PATCH /jobs/:id`                    | any of the job fields except `propertyId` | `200` or `404`          |
-| `DELETE /jobs/:id`                   |                                           | `204` or `404`          |
-| `GET /helpers`                       |                                           | `200` list              |
-| `POST /helpers`                      | `{ name, phone? }`                        | `201` helper            |
-| `GET /helpers/:id`                   |                                           | `200` or `404`          |
-| `PATCH /helpers/:id`                 | any of `name`, `phone`, `active`          | `200` or `404`          |
-| `DELETE /helpers/:id`                |                                           | `204`, `404` or `409`   |
-| `GET /recurring-series`              |                                           | `200` list              |
-| `POST /recurring-series`             | series fields, see below                  | `201` series            |
-| `GET /recurring-series/:id`          |                                           | `200` or `404`          |
-| `PATCH /recurring-series/:id`        | any of the job template fields, `endDate` | `200` or `404`          |
-| `DELETE /recurring-series/:id`       |                                           | `204`, `404` or `409`   |
+| Method and path                      | Body                                      | Response                                    |
+| ------------------------------------ | ----------------------------------------- | ------------------------------------------- |
+| `GET /health`                        |                                           | `200`                                       |
+| `POST /auth/login`                   | `{ email, password }`                     | `200` user and organization, `401` or `429` |
+| `POST /auth/logout`                  |                                           | `204`                                       |
+| `GET /auth/me`                       |                                           | `200` user and organization                 |
+| `GET /clients`                       |                                           | `200` list                                  |
+| `POST /clients`                      | `{ name, email?, phone? }`                | `201` client                                |
+| `GET /clients/:id`                   |                                           | `200` or `404`                              |
+| `PATCH /clients/:id`                 | any of `name`, `email`, `phone`           | `200` or `404`                              |
+| `DELETE /clients/:id`                |                                           | `204` or `404`                              |
+| `GET /clients/:clientId/properties`  |                                           | `200` list or `404`                         |
+| `POST /clients/:clientId/properties` | property fields, see below                | `201` property or `404`                     |
+| `GET /properties/:id`                |                                           | `200` or `404`                              |
+| `PATCH /properties/:id`              | any of the property fields                | `200` or `404`                              |
+| `DELETE /properties/:id`             |                                           | `204`, `404` or `409`                       |
+| `GET /jobs?from=&to=`                |                                           | `200` list                                  |
+| `POST /jobs`                         | job fields, see below                     | `201` job                                   |
+| `GET /jobs/:id`                      |                                           | `200` or `404`                              |
+| `PATCH /jobs/:id`                    | any of the job fields except `propertyId` | `200` or `404`                              |
+| `DELETE /jobs/:id`                   |                                           | `204` or `404`                              |
+| `GET /helpers`                       |                                           | `200` list                                  |
+| `POST /helpers`                      | `{ name, phone? }`                        | `201` helper                                |
+| `GET /helpers/:id`                   |                                           | `200` or `404`                              |
+| `PATCH /helpers/:id`                 | any of `name`, `phone`, `active`          | `200` or `404`                              |
+| `DELETE /helpers/:id`                |                                           | `204`, `404` or `409`                       |
+| `GET /recurring-series`              |                                           | `200` list                                  |
+| `POST /recurring-series`             | series fields, see below                  | `201` series                                |
+| `GET /recurring-series/:id`          |                                           | `200` or `404`                              |
+| `PATCH /recurring-series/:id`        | any of the job template fields, `endDate` | `200` or `404`                              |
+| `DELETE /recurring-series/:id`       |                                           | `204`, `404` or `409`                       |
+
+Every route except `/health` and `POST /auth/login` needs a signed-in user and
+answers `401 unauthorized` without one. Signing in sets the `cleanm_session`
+cookie (`HttpOnly`, `SameSite=Lax`, `Secure` in production), valid for 30
+days; the user's organization is the one every other route serves. A wrong
+email or password answers `401 invalid_credentials` with the same message for
+both, and more than ten attempts on one email in fifteen minutes answers
+`429 too_many_requests`. Signing out deletes the session.
 
 In a `PATCH`, fields left out are unchanged and `null` clears a field.
 Invalid input answers `400 validation_error`; a malformed body answers
@@ -176,8 +193,9 @@ npm test
 ```
 
 Each run applies pending migrations to the test database first. A test file
-starts the app on a free port, serving an organization created for that file,
-and calls it with `fetch`; each test starts with no clients. Nothing is read
+starts the app on a free port, with an organization and a signed-in user
+created for that file, and calls it with `fetch` sending that session cookie;
+each test starts with no clients. Nothing is read
 from `.env`: the database is `postgres://localhost:5432/cleanm_test` unless
 `TEST_DATABASE_URL` is set.
 
