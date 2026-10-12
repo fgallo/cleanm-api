@@ -7,6 +7,7 @@ import { clientsRouter } from "./clients/routes.ts";
 import { helpersRouter } from "./helpers/routes.ts";
 import { errorHandler, notFoundHandler } from "./http/error-handler.ts";
 import { jobsRouter } from "./jobs/routes.ts";
+import { organizationRouter } from "./organizations/routes.ts";
 import { propertiesRouter } from "./properties/routes.ts";
 import { recurringSeriesRouter } from "./recurring-series/routes.ts";
 
@@ -25,6 +26,7 @@ app.use("/auth", authRouter);
 
 // Everything below belongs to the signed-in user's organization.
 app.use(requireSession);
+app.use("/organization", organizationRouter);
 app.use("/clients", clientsRouter);
 app.use(propertiesRouter);
 app.use("/jobs", jobsRouter);
