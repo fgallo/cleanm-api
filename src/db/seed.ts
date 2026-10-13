@@ -24,9 +24,26 @@ async function seedOrganization(): Promise<Organization> {
     return found;
   }
 
+  // Invented business details, enough to render an invoice. No tax: the
+  // business is not registered.
   const inserted = await pool.query<Organization>(
-    "INSERT INTO organizations (name, timezone) VALUES ($1, $2) RETURNING id, name",
-    ["Maple Leaf Cleaning", "America/Toronto"],
+    `INSERT INTO organizations (
+       name, timezone, address_line1, city, province, postal_code, phone,
+       email, payment_instructions
+     )
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+     RETURNING id, name`,
+    [
+      "Maple Leaf Cleaning",
+      "America/Toronto",
+      "456 Sample Ave",
+      "Toronto",
+      "ON",
+      "M4B 1B3",
+      "416-555-0100",
+      "hello@example.com",
+      "Interac e-Transfer: hello@example.com",
+    ],
   );
   const organization = inserted.rows[0];
   if (organization === undefined) {
