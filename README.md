@@ -60,6 +60,8 @@ JSON in and out, camelCase keys. Errors always look like
 | `POST /auth/login`                   | `{ email, password }`                     | `200` user and organization, `401` or `429` |
 | `POST /auth/logout`                  |                                           | `204`                                       |
 | `GET /auth/me`                       |                                           | `200` user and organization                 |
+| `GET /organization`                  |                                           | `200` settings                              |
+| `PATCH /organization`                | any of the settings, see below            | `200` settings                              |
 | `GET /clients`                       |                                           | `200` list                                  |
 | `POST /clients`                      | `{ name, email?, phone? }`                | `201` client                                |
 | `GET /clients/:id`                   |                                           | `200` or `404`                              |
@@ -93,6 +95,13 @@ days; the user's organization is the one every other route serves. A wrong
 email or password answers `401 invalid_credentials` with the same message for
 both, and more than ten attempts on one email in fifteen minutes answers
 `429 too_many_requests`. Signing out deletes the session.
+
+The organization is a single resource, the signed-in user's. Its settings
+are what invoices print and how they are computed: `name`, `timezone` (an
+IANA name), the address (`addressLine1`, `addressLine2`, `city`, `province`,
+`postalCode`, `country`), `phone`, `email`, `paymentInstructions` (free text
+such as "Interac e-Transfer: hello@example.com") and the tax: `taxName`,
+`taxRateBasisPoints` (1300 is 13%; 0 is no tax) and `taxRegistrationNumber`.
 
 In a `PATCH`, fields left out are unchanged and `null` clears a field.
 Invalid input answers `400 validation_error`; a malformed body answers
