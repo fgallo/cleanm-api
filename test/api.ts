@@ -62,11 +62,13 @@ export async function createSessionCookie(user: auth.User): Promise<string> {
   return `${cookieName}=${token}`;
 }
 
-// Jobs first, because a series, property or helper with jobs cannot be
-// deleted; deleting the clients then cascades to their properties. Users and
-// their sessions go with the organization.
+// Invoices first, because a job with an invoice cannot be deleted; then jobs,
+// because a series, property or helper with jobs cannot be deleted; deleting
+// the clients then cascades to their properties. Users and their sessions go
+// with the organization.
 async function deleteData(): Promise<void> {
-  for (const table of ["jobs", "recurring_series", "clients", "helpers"]) {
+  const tables = ["invoices", "jobs", "recurring_series", "clients", "helpers"];
+  for (const table of tables) {
     await pool.query(`DELETE FROM ${table} WHERE organization_id = ANY($1)`, [
       organizationIds,
     ]);
