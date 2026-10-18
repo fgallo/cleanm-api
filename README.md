@@ -76,7 +76,7 @@ JSON in and out, camelCase keys. Errors always look like
 | `POST /jobs`                         | job fields, see below                     | `201` job                                   |
 | `GET /jobs/:id`                      |                                           | `200` or `404`                              |
 | `PATCH /jobs/:id`                    | any of the job fields except `propertyId` | `200` or `404`                              |
-| `DELETE /jobs/:id`                   |                                           | `204` or `404`                              |
+| `DELETE /jobs/:id`                   |                                           | `204`, `404` or `409`                       |
 | `GET /helpers`                       |                                           | `200` list                                  |
 | `POST /helpers`                      | `{ name, phone? }`                        | `201` helper                                |
 | `GET /helpers/:id`                   |                                           | `200` or `404`                              |
@@ -87,6 +87,11 @@ JSON in and out, camelCase keys. Errors always look like
 | `GET /recurring-series/:id`          |                                           | `200` or `404`                              |
 | `PATCH /recurring-series/:id`        | any of the job template fields, `endDate` | `200` or `404`                              |
 | `DELETE /recurring-series/:id`       |                                           | `204`, `404` or `409`                       |
+| `GET /invoices?from=&to=`            |                                           | `200` list                                  |
+| `POST /invoices`                     | `{ jobId }`, optional fields, see below   | `201` invoice, `400` or `409`               |
+| `GET /invoices/:id`                  |                                           | `200` or `404`                              |
+| `PATCH /invoices/:id`                | any of the invoice fields, see below      | `200` or `404`                              |
+| `DELETE /invoices/:id`               |                                           | `204` or `404`                              |
 
 Every route except `/health` and `POST /auth/login` needs a signed-in user and
 answers `401 unauthorized` without one. Signing in sets the `cleanm_session`
@@ -132,8 +137,9 @@ curl -X POST localhost:3000/clients/$CLIENT_ID/properties \
 
 A job is a visit to a property on a day of the organization's calendar. The
 list takes an inclusive date range (`from` and `to` as `YYYY-MM-DD`), ordered
-by date and time, and every job comes with its `property`, `client` and
-`helper` (or `null`) embedded. Job fields: `propertyId`, `scheduledDate`
+by date and time, and every job comes with its `property`, `client`, `helper`
+(or `null`) and `invoice` (`{ id, number }` or `null`) embedded. Job fields:
+`propertyId`, `scheduledDate`
 (`YYYY-MM-DD`), `startTime` (`HH:MM`), `durationMinutes`, `serviceType`
 (`regular`, `deep`, `move_in`, `move_out`) and `hourlyRateCents` are required;
 `status` (`estimated`, `scheduled`, `completed`, `cancelled`; default
@@ -141,13 +147,14 @@ by date and time, and every job comes with its `property`, `client` and
 `priceCents` is derived: the fixed price when set, otherwise hourly rate ×
 duration. A `propertyId` or `helperId` that does not exist, or a helper that
 is not active, answers `400 validation_error` on that field. Jobs generated
-by a recurring series carry its id in `recurringSeriesId`.
+by a recurring series carry its id in `recurringSeriesId`. A job with an
+invoice cannot be deleted (`409`).
 
 ```sh
 curl -X POST localhost:3000/jobs \
   -H 'content-type: application/json' \
   -d '{"propertyId":"'$PROPERTY_ID'","scheduledDate":"2026-10-14","startTime":"09:00","durationMinutes":150,"serviceType":"regular","hourlyRateCents":4500}'
-# {"id":"...","scheduledDate":"2026-10-14","startTime":"09:00:00","durationMinutes":150,"serviceType":"regular","status":"scheduled","hourlyRateCents":4500,"fixedPriceCents":null,"priceCents":11250,"notes":null,"property":{...},"client":{"id":"...","name":"Jane Doe"},"helper":null,"createdAt":"...","updatedAt":"..."}
+# {"id":"...","scheduledDate":"2026-10-14","startTime":"09:00:00","durationMinutes":150,"serviceType":"regular","status":"scheduled","hourlyRateCents":4500,"fixedPriceCents":null,"priceCents":11250,"notes":null,"property":{...},"client":{"id":"...","name":"Jane Doe"},"helper":null,"recurringSeriesId":null,"invoice":null,"createdAt":"...","updatedAt":"..."}
 ```
 
 A helper is a person who does the cleaning and can be assigned to a job. A
@@ -178,6 +185,40 @@ curl -X POST localhost:3000/recurring-series \
   -H 'content-type: application/json' \
   -d '{"propertyId":"'$PROPERTY_ID'","everyWeeks":2,"startDate":"2026-10-13","startTime":"09:00","durationMinutes":150,"serviceType":"regular","hourlyRateCents":4500}'
 # {"id":"...","everyWeeks":2,"dayOfMonth":null,"startDate":"2026-10-13","endDate":null,"generatedUntil":"...","startTime":"09:00:00",...,"property":{...},"client":{...},"helper":null,"createdAt":"...","updatedAt":"..."}
+```
+
+An invoice bills one visit. `POST /invoices` takes the `jobId` of a job that
+is `scheduled` or `completed` and not invoiced yet (`400` on the field when
+the job does not exist, `409` otherwise), and copies the job's pricing
+(`serviceDate`, `durationMinutes`, `hourlyRateCents`, `fixedPriceCents`) and
+the organization's tax (`taxName`, `taxRateBasisPoints`) into the invoice,
+which keeps its own copy from then on: editing the job or the tax settings
+later never changes an invoice. `number` is sequential per organization and
+assigned at creation. Optional on creation: `issueDate` (default: today on
+the organization's calendar), `dueDate` (`null` means due on receipt),
+`description` (default: the kind of cleaning, such as "Regular cleaning"), a
+discount as either `fixedDiscountCents` or `discountBasisPoints` (1000 is
+10%; not both) with a `discountDescription` printed next to it (such as
+"Referral for 1 cleaning"), and `notes`. `subtotalCents` (the fixed price,
+otherwise hourly rate × duration), `discountCents`, `taxCents` (on the
+discounted subtotal) and `totalCents` are derived.
+
+The owner edits the invoice itself: `PATCH` takes `issueDate`, `dueDate`,
+`serviceDate`, `description`, `durationMinutes`, `hourlyRateCents`,
+`fixedPriceCents`, `fixedDiscountCents`, `discountBasisPoints`,
+`discountDescription` and `notes`, and the amounts follow; the tax is not
+editable. Setting one form of discount
+clears the other. `dueDate` must not be before `issueDate`, and a fixed
+discount must not exceed the subtotal (`400` on the field). The list takes an
+inclusive `issueDate` range, newest first, and every invoice comes with its
+`job`, `client` and `property` embedded. Deleting an invoice frees the job
+for a new one; the number is not reused.
+
+```sh
+curl -X POST localhost:3000/invoices \
+  -H 'content-type: application/json' \
+  -d '{"jobId":"'$JOB_ID'"}'
+# {"id":"...","number":1,"issueDate":"2026-10-16","dueDate":null,"description":"Regular cleaning","serviceDate":"2026-10-14","durationMinutes":150,"hourlyRateCents":4500,"fixedPriceCents":null,"subtotalCents":11250,"fixedDiscountCents":null,"discountBasisPoints":null,"discountCents":0,"discountDescription":null,"taxName":null,"taxRateBasisPoints":0,"taxCents":0,"totalCents":11250,"notes":null,"job":{"id":"...","scheduledDate":"2026-10-14","status":"scheduled"},"client":{...},"property":{...},"createdAt":"...","updatedAt":"..."}
 ```
 
 ## Database

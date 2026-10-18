@@ -70,6 +70,10 @@ multi-tenant signup and billing.
   - The rule and the property never change: to change the rhythm, end the
     series (`end_date`, which removes unrealized visits after it) and create
     another. A series is deleted only while none of its visits happened.
+- Invoicing: one invoice per visit, generated before or after it (a job that
+  is `scheduled` or `completed`). The owner sometimes edits an invoice's date,
+  line or amount after generating it, and the number stays (confirmed
+  2026-10-16): no draft or void states.
 
 ## 4. Data model sketch
 
@@ -93,18 +97,26 @@ more than one property.
    "Modified" is an event, not a status: use `updated_at`, plus a `job_events`
    table if history is wanted.
 3. Do not store "invoice generated" or "paid" booleans. Derive them: a job is
-   invoiced if it has an `invoice_id`; an invoice is paid if its payments cover
-   the total. Store `paid_at` and `method` on payments. The same for a job's
-   price: `fixed_price_cents` when a price was agreed, otherwise
-   `hourly_rate_cents` × `duration_minutes` / 60, computed in the query.
+   invoiced if an invoice points at it (`invoices.job_id`, unique); an invoice
+   is paid if its payments cover the total. Store `paid_at` and `method` on
+   payments. The same for a job's price: `fixed_price_cents` when a price was
+   agreed, otherwise `hourly_rate_cents` × `duration_minutes` / 60, computed
+   in the query.
 4. Money as integer cents. Timestamps as `timestamptz` in UTC. The organization
    has a timezone field. A job's day and start time are `date` and `time`
    without time zone: a job is a slot on the organization's calendar, not an
    instant.
-5. Invoices keep a snapshot of the amounts, have a sequential number per
-   organization, and are immutable once issued. Tax is configured per
-   organization (rate and registration number), which covers both 13% HST in
-   Ontario and businesses that are not registered.
+5. Invoices have a sequential number per organization, assigned at creation
+   (`organizations.next_invoice_number`); a deleted invoice leaves a gap, and
+   numbers are never reused. An invoice copies the pricing inputs of its job
+   and the tax of the organization when it is created, and keeps its own copy
+   from then on: the owner edits the invoice itself, and a later change to the
+   job or to the tax settings never changes it. A discount is an amount or a
+   share of the subtotal (basis points), never both; the tax applies to the
+   discounted subtotal. Subtotal, discount, tax and total are derived from
+   those columns in the query, like a job's price. Tax is
+   configured per organization (rate and registration number), which covers
+   both 13% HST in Ontario and businesses that are not registered.
 6. Rows that other rows reference are never deleted in cascade (a property
    with jobs, later a job with an invoice): the API answers `409 conflict`, so
    history is kept. Where a row must still be retired, it gets a flag instead
