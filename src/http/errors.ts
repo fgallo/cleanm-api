@@ -26,6 +26,14 @@ export class UnauthorizedError extends HttpError {
   }
 }
 
+// The body is not of a type the route takes, such as a GIF sent as a logo.
+export class UnsupportedMediaTypeError extends HttpError {
+  constructor(message: string) {
+    super(415, "unsupported_media_type", message);
+    this.name = "UnsupportedMediaTypeError";
+  }
+}
+
 // The request is valid, but the current state does not allow it.
 export class ConflictError extends HttpError {
   constructor(message: string) {

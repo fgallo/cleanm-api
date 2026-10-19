@@ -25,11 +25,17 @@ export const updateOrganizationSchema = z
       .regex(/^[A-Z]{2}$/, "Must be a two-letter country code"),
     phone: text(50).nullable(),
     email: z.email().max(320).nullable(),
+    // Free text, printed as it is: "www.example.com" is what an invoice
+    // shows, and a URL check would refuse it.
+    website: text(200).nullable(),
     paymentInstructions: text(2000).nullable(),
     taxName: text(50).nullable(),
     // 1300 means 13.00%.
     taxRateBasisPoints: z.int().min(0).max(10000),
     taxRegistrationNumber: text(50).nullable(),
+    // Must also be above every invoice number already used: the route
+    // checks that against the database.
+    nextInvoiceNumber: z.int().positive(),
   })
   .partial()
   .refine((patch) => Object.keys(patch).length > 0, {

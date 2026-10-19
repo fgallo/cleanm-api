@@ -43,11 +43,21 @@ export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
     return;
   }
 
-  if (isJsonParseError(error)) {
+  if (isBodyError(error, "entity.parse.failed")) {
     res.status(400).json({
       error: {
         code: "invalid_json",
         message: "Request body is not valid JSON",
+      },
+    });
+    return;
+  }
+
+  if (isBodyError(error, "entity.too.large")) {
+    res.status(413).json({
+      error: {
+        code: "payload_too_large",
+        message: "Request body is too large",
       },
     });
     return;
@@ -71,12 +81,13 @@ export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
   });
 };
 
-// Raised by express.json() when the body cannot be parsed.
-function isJsonParseError(error: unknown): boolean {
+// Raised by the body parsers (express.json, express.raw): a body that cannot
+// be parsed, or one above the parser's limit.
+function isBodyError(error: unknown, type: string): boolean {
   return (
     typeof error === "object" &&
     error !== null &&
     "type" in error &&
-    error.type === "entity.parse.failed"
+    error.type === type
   );
 }

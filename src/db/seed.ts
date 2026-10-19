@@ -29,9 +29,9 @@ async function seedOrganization(): Promise<Organization> {
   const inserted = await pool.query<Organization>(
     `INSERT INTO organizations (
        name, timezone, address_line1, city, province, postal_code, phone,
-       email, payment_instructions
+       email, website, payment_instructions
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      RETURNING id, name`,
     [
       "Maple Leaf Cleaning",
@@ -42,6 +42,7 @@ async function seedOrganization(): Promise<Organization> {
       "M4B 1B3",
       "416-555-0100",
       "hello@example.com",
+      "www.example.com",
       "Interac e-Transfer: hello@example.com",
     ],
   );
