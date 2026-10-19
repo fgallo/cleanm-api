@@ -173,6 +173,12 @@ more than one property.
 - `helmet` for the standard security headers and `express-rate-limit` for
   sign-in attempts, by address and by email. Both are the most used; the
   counters live in memory until there is more than one process.
+- The organization logo is uploaded as the raw request body
+  (`PUT /organization/logo`, `express.raw`, PNG or JPEG up to 1 MB, file
+  signature checked) and stored in PostgreSQL as `bytea`. Chosen over
+  `multer` (multipart, meant for HTML forms; the clients are React and Swift
+  sending a `File`), the server's disk (ephemeral on the deploy candidates)
+  and object storage (another service for one small image per organization).
 
 ### API conventions
 
@@ -181,12 +187,14 @@ more than one property.
 - Status codes: `201` create, `200` read and update, `204` delete, `400`
   invalid input or JSON, `401` no session or wrong credentials, `404` not
   found, `409` delete refused because other records still reference the row,
+  `413` body above the limit, `415` body of a type the route does not take,
   `429` too many sign-in attempts, `500` unexpected.
 - Errors always have the shape
   `{ "error": { "code", "message", "issues"?: [{ "path", "message" }] } }`
   with `code` in `validation_error`, `invalid_json`, `unauthorized`,
-  `invalid_credentials`, `not_found`, `conflict`, `too_many_requests`,
-  `internal_error`. An id in the body that points at nothing (such as
+  `invalid_credentials`, `not_found`, `conflict`, `payload_too_large`,
+  `unsupported_media_type`, `too_many_requests`, `internal_error`. An id in
+  the body that points at nothing (such as
   `propertyId` on `POST /jobs`) is a `validation_error` on that field.
 - Partial updates use `PATCH`; a field set to `null` clears it.
 - Child resources use shallow nesting: the collection lives under its parent
