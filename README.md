@@ -62,6 +62,9 @@ JSON in and out, camelCase keys. Errors always look like
 | `GET /auth/me`                       |                                           | `200` user and organization                 |
 | `GET /organization`                  |                                           | `200` settings                              |
 | `PATCH /organization`                | any of the settings, see below            | `200` settings                              |
+| `PUT /organization/logo`             | the image bytes, see below                | `200` settings, `400`, `413` or `415`       |
+| `GET /organization/logo`             |                                           | `200` image or `404`                        |
+| `DELETE /organization/logo`          |                                           | `204` or `404`                              |
 | `GET /clients`                       |                                           | `200` list                                  |
 | `POST /clients`                      | `{ name, email?, phone? }`                | `201` client                                |
 | `GET /clients/:id`                   |                                           | `200` or `404`                              |
@@ -104,15 +107,30 @@ both, and more than ten attempts on one email in fifteen minutes answers
 The organization is a single resource, the signed-in user's. Its settings
 are what invoices print and how they are computed: `name`, `timezone` (an
 IANA name), the address (`addressLine1`, `addressLine2`, `city`, `province`,
-`postalCode`, `country`), `phone`, `email`, `paymentInstructions` (free text
-such as "Interac e-Transfer: hello@example.com") and the tax: `taxName`,
-`taxRateBasisPoints` (1300 is 13%; 0 is no tax) and `taxRegistrationNumber`.
+`postalCode`, `country`), `phone`, `email`, `website` (printed as it is, such
+as "www.example.com"), `paymentInstructions` (free text such as "Interac
+e-Transfer: hello@example.com"), the tax: `taxName`, `taxRateBasisPoints`
+(1300 is 13%; 0 is no tax) and `taxRegistrationNumber`, and
+`nextInvoiceNumber`, the number the next invoice gets: set it once when moving
+from another tool, to a value above every number already used (`400`
+otherwise).
+
+The logo is a PNG or JPEG of at most 1 MB, sent as the body of
+`PUT /organization/logo` with its own `content-type` (no multipart form).
+Any other type answers `415 unsupported_media_type`, bytes that are not the
+declared image `400`, a larger file `413 payload_too_large`. `hasLogo` in
+the settings says whether there is one; `GET /organization/logo` serves it.
+
+```sh
+curl -X PUT localhost:3000/organization/logo \
+  -H 'content-type: image/png' --data-binary @logo.png
+```
 
 In a `PATCH`, fields left out are unchanged and `null` clears a field.
 Invalid input answers `400 validation_error`; a malformed body answers
-`400 invalid_json`. Deleting something that other records still reference,
-such as a client or a property with jobs, answers `409 conflict`: history is
-never lost.
+`400 invalid_json`, a body above the limit `413 payload_too_large`. Deleting
+something that other records still reference, such as a client or a property
+with jobs, answers `409 conflict`: history is never lost.
 
 ```sh
 curl -X POST localhost:3000/clients \
