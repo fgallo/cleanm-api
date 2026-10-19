@@ -291,6 +291,18 @@ export async function updateInvoice(
   return rows[0];
 }
 
+// The highest number in use, or null before the first invoice. The next
+// invoice number of the organization must stay above it.
+export async function highestNumber(
+  organizationId: string,
+): Promise<number | null> {
+  const { rows } = await pool.query<{ highest: number | null }>(
+    "SELECT max(number) AS highest FROM invoices WHERE organization_id = $1",
+    [organizationId],
+  );
+  return rows[0]?.highest ?? null;
+}
+
 export async function deleteInvoice(
   organizationId: string,
   id: string,
