@@ -3,6 +3,7 @@ import { DatabaseError } from "pg";
 import { buildSetClause } from "../db/patch.ts";
 import { pool } from "../db/pool.ts";
 import type { JobStatus } from "../jobs/repository.ts";
+import type { PaymentMethod } from "../payments/repository.ts";
 
 export type Invoice = {
   id: string;
@@ -33,6 +34,19 @@ export type Invoice = {
   taxRateBasisPoints: number;
   taxCents: number;
   totalCents: number;
+  // Derived from the payments: an invoice is paid once they cover the total
+  // (project brief, design rule 3). amountDueCents goes negative when the
+  // invoice was edited below what was already paid.
+  paidCents: number;
+  amountDueCents: number;
+  paid: boolean;
+  payments: Array<{
+    id: string;
+    paidOn: string; // YYYY-MM-DD
+    method: PaymentMethod;
+    amountCents: number;
+    notes: string | null;
+  }>;
   notes: string | null;
   job: { id: string; scheduledDate: string; status: JobStatus };
   client: {
@@ -115,8 +129,11 @@ const columns = `
   i.tax_name AS "taxName",
   i.tax_rate_basis_points AS "taxRateBasisPoints",
   amounts.tax_cents AS "taxCents",
-  amounts.subtotal_cents - amounts.discount_cents + amounts.tax_cents
-    AS "totalCents",
+  total.total_cents AS "totalCents",
+  paid.paid_cents AS "paidCents",
+  total.total_cents - paid.paid_cents AS "amountDueCents",
+  paid.paid_cents >= total.total_cents AS paid,
+  paid.payments,
   i.notes,
   json_build_object(
     'id', j.id,
@@ -175,6 +192,29 @@ const joins = `
         * i.tax_rate_basis_points / 10000.0
       )::integer AS tax_cents
   ) amounts
+  CROSS JOIN LATERAL (
+    SELECT amounts.subtotal_cents - amounts.discount_cents + amounts.tax_cents
+      AS total_cents
+  ) total
+  CROSS JOIN LATERAL (
+    SELECT
+      COALESCE(sum(py.amount_cents), 0)::integer AS paid_cents,
+      COALESCE(
+        json_agg(
+          json_build_object(
+            'id', py.id,
+            'paidOn', py.paid_on,
+            'method', py.method,
+            'amountCents', py.amount_cents,
+            'notes', py.notes
+          )
+          ORDER BY py.paid_on, py.created_at
+        ),
+        '[]'
+      ) AS payments
+    FROM payments py
+    WHERE py.organization_id = i.organization_id AND py.invoice_id = i.id
+  ) paid
 `;
 
 export async function listInvoices(
