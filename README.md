@@ -94,7 +94,11 @@ JSON in and out, camelCase keys. Errors always look like
 | `POST /invoices`                     | `{ jobId }`, optional fields, see below   | `201` invoice, `400` or `409`               |
 | `GET /invoices/:id`                  |                                           | `200` or `404`                              |
 | `PATCH /invoices/:id`                | any of the invoice fields, see below      | `200` or `404`                              |
-| `DELETE /invoices/:id`               |                                           | `204` or `404`                              |
+| `DELETE /invoices/:id`               |                                           | `204`, `404` or `409`                       |
+| `POST /invoices/:invoiceId/payments` | `{ method, amountCents }`, see below      | `201` payment, `400` or `404`               |
+| `GET /payments/:id`                  |                                           | `200` or `404`                              |
+| `PATCH /payments/:id`                | any of the payment fields                 | `200` or `404`                              |
+| `DELETE /payments/:id`               |                                           | `204` or `404`                              |
 
 Every route except `/health` and `POST /auth/login` needs a signed-in user and
 answers `401 unauthorized` without one. Signing in sets the `cleanm_session`
@@ -225,18 +229,36 @@ The owner edits the invoice itself: `PATCH` takes `issueDate`, `dueDate`,
 `serviceDate`, `description`, `durationMinutes`, `hourlyRateCents`,
 `fixedPriceCents`, `fixedDiscountCents`, `discountBasisPoints`,
 `discountDescription` and `notes`, and the amounts follow; the tax is not
-editable. Setting one form of discount
-clears the other. `dueDate` must not be before `issueDate`, and a fixed
-discount must not exceed the subtotal (`400` on the field). The list takes an
-inclusive `issueDate` range, newest first, and every invoice comes with its
-`job`, `client` and `property` embedded. Deleting an invoice frees the job
-for a new one; the number is not reused.
+editable. Setting one form of discount clears the other. `dueDate` must not
+be before `issueDate`, and a fixed discount must not exceed the subtotal
+(`400` on the field). The list takes an inclusive `issueDate` range, newest
+first, and every invoice comes with its `job`, `client`, `property` and
+`payments` embedded, plus `paidCents`, `amountDueCents` and `paid` derived
+from the payments. Deleting an invoice frees the job for a new one; the
+number is not reused. An invoice with payments cannot be deleted (`409`).
 
 ```sh
 curl -X POST localhost:3000/invoices \
   -H 'content-type: application/json' \
   -d '{"jobId":"'$JOB_ID'"}'
-# {"id":"...","number":1,"issueDate":"2026-10-16","dueDate":null,"description":"Regular cleaning","serviceDate":"2026-10-14","durationMinutes":150,"hourlyRateCents":4500,"fixedPriceCents":null,"subtotalCents":11250,"fixedDiscountCents":null,"discountBasisPoints":null,"discountCents":0,"discountDescription":null,"taxName":null,"taxRateBasisPoints":0,"taxCents":0,"totalCents":11250,"notes":null,"job":{"id":"...","scheduledDate":"2026-10-14","status":"scheduled"},"client":{...},"property":{...},"createdAt":"...","updatedAt":"..."}
+# {"id":"...","number":1,"issueDate":"2026-10-16","dueDate":null,"description":"Regular cleaning","serviceDate":"2026-10-14","durationMinutes":150,"hourlyRateCents":4500,"fixedPriceCents":null,"subtotalCents":11250,"fixedDiscountCents":null,"discountBasisPoints":null,"discountCents":0,"discountDescription":null,"taxName":null,"taxRateBasisPoints":0,"taxCents":0,"totalCents":11250,"paidCents":0,"amountDueCents":11250,"paid":false,"payments":[],"notes":null,"job":{"id":"...","scheduledDate":"2026-10-14","status":"scheduled"},"client":{...},"property":{...},"createdAt":"...","updatedAt":"..."}
+```
+
+A payment is money received for an invoice: `method` (`e_transfer` or
+`cash`), `amountCents`, `paidOn` (default: today on the organization's
+calendar) and optional `notes`. Several partial payments may cover one
+invoice, and the invoice is `paid` once they reach its total; a payment above
+`amountDueCents` answers `400` on the field, and so does any payment on a
+paid invoice. A payment is created under its invoice (`404` when the invoice
+does not exist) and addressed by its own id afterwards; there is no list
+route, because the invoice embeds its payments. Editing an invoice below what
+was already paid is allowed and shows as a negative `amountDueCents`.
+
+```sh
+curl -X POST localhost:3000/invoices/$INVOICE_ID/payments \
+  -H 'content-type: application/json' \
+  -d '{"method":"e_transfer","amountCents":11250}'
+# {"id":"...","invoiceId":"...","paidOn":"2026-10-19","method":"e_transfer","amountCents":11250,"notes":null,"createdAt":"...","updatedAt":"..."}
 ```
 
 ## Database
