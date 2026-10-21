@@ -98,8 +98,8 @@ more than one property.
    table if history is wanted.
 3. Do not store "invoice generated" or "paid" booleans. Derive them: a job is
    invoiced if an invoice points at it (`invoices.job_id`, unique); an invoice
-   is paid if its payments cover the total. Store `paid_at` and `method` on
-   payments. The same for a job's price: `fixed_price_cents` when a price was
+   is paid if its payments cover the total. Store `paid_on` (a calendar date:
+   revenue is looked up by month) and `method` on payments. The same for a job's price: `fixed_price_cents` when a price was
    agreed, otherwise `hourly_rate_cents` × `duration_minutes` / 60, computed
    in the query.
 4. Money as integer cents. Timestamps as `timestamptz` in UTC. The organization
