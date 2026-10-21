@@ -9,6 +9,7 @@ import { errorHandler, notFoundHandler } from "./http/error-handler.ts";
 import { invoicesRouter } from "./invoices/routes.ts";
 import { jobsRouter } from "./jobs/routes.ts";
 import { organizationRouter } from "./organizations/routes.ts";
+import { paymentsRouter } from "./payments/routes.ts";
 import { propertiesRouter } from "./properties/routes.ts";
 import { recurringSeriesRouter } from "./recurring-series/routes.ts";
 
@@ -34,6 +35,7 @@ app.use("/jobs", jobsRouter);
 app.use("/helpers", helpersRouter);
 app.use("/recurring-series", recurringSeriesRouter);
 app.use("/invoices", invoicesRouter);
+app.use(paymentsRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
