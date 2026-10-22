@@ -31,6 +31,9 @@ jobs:
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/cleanm_ci
       # The tests use the same throwaway database.
       TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/cleanm_ci
+      # The runner's Ubuntu blocks the user namespaces Chromium's sandbox
+      # needs (AppArmor); the PDF test cannot launch it otherwise.
+      CHROMIUM_NO_SANDBOX: "true"
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7

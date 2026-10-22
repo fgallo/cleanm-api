@@ -3,10 +3,21 @@
 import puppeteer from "puppeteer";
 import type { Browser } from "puppeteer";
 
+import { config } from "../../config.ts";
+
+// Also used by the preview script, so every browser starts the same way.
+export function launchBrowser(): Promise<Browser> {
+  return puppeteer.launch({
+    args: config.chromiumNoSandbox
+      ? ["--no-sandbox", "--disable-setuid-sandbox"]
+      : [],
+  });
+}
+
 let browserPromise: Promise<Browser> | undefined;
 
 function browser(): Promise<Browser> {
-  browserPromise ??= puppeteer.launch().catch((error: unknown) => {
+  browserPromise ??= launchBrowser().catch((error: unknown) => {
     // A failed launch (no Chromium installed, for instance) is not final:
     // the next request tries again.
     browserPromise = undefined;
