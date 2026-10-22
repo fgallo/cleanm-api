@@ -8,6 +8,8 @@ import {
 import * as jobs from "../jobs/repository.ts";
 import * as organizations from "../organizations/repository.ts";
 import { defaultDescription } from "./description.ts";
+import { renderPdf } from "./pdf/render.ts";
+import { invoiceHtml } from "./pdf/template.ts";
 import * as invoices from "./repository.ts";
 import type { InvoicePatch } from "./repository.ts";
 import {
@@ -71,6 +73,29 @@ invoicesRouter.get("/:id", async (req, res) => {
     throw new NotFoundError("Invoice not found");
   }
   res.json(invoice);
+});
+
+// Rendered on request, never stored: the PDF always shows the invoice as it
+// is now, with the organization's current details and logo.
+invoicesRouter.get("/:id/pdf", async (req, res) => {
+  const { id } = invoiceIdSchema.parse(req.params);
+  const invoice = await invoices.findInvoice(res.locals.organizationId, id);
+  if (invoice === undefined) {
+    throw new NotFoundError("Invoice not found");
+  }
+  const [organization, logo] = await Promise.all([
+    organizations.findOrganization(res.locals.organizationId),
+    organizations.findLogo(res.locals.organizationId),
+  ]);
+
+  const pdf = await renderPdf(invoiceHtml({ invoice, organization, logo }));
+  res
+    .type("application/pdf")
+    .set(
+      "content-disposition",
+      `inline; filename="invoice-${invoice.number}.pdf"`,
+    )
+    .send(pdf);
 });
 
 // The rules that span fields (dueDate against issueDate, a fixed discount
