@@ -93,6 +93,7 @@ JSON in and out, camelCase keys. Errors always look like
 | `GET /invoices?from=&to=`            |                                           | `200` list                                  |
 | `POST /invoices`                     | `{ jobId }`, optional fields, see below   | `201` invoice, `400` or `409`               |
 | `GET /invoices/:id`                  |                                           | `200` or `404`                              |
+| `GET /invoices/:id/pdf`              |                                           | `200` PDF or `404`                          |
 | `PATCH /invoices/:id`                | any of the invoice fields, see below      | `200` or `404`                              |
 | `DELETE /invoices/:id`               |                                           | `204`, `404` or `409`                       |
 | `POST /invoices/:invoiceId/payments` | `{ method, amountCents }`, see below      | `201` payment, `400` or `404`               |
@@ -237,6 +238,15 @@ first, and every invoice comes with its `job`, `client`, `property` and
 from the payments. Deleting an invoice frees the job for a new one; the
 number is not reused. An invoice with payments cannot be deleted (`409`).
 
+`GET /invoices/:id/pdf` renders the invoice as a PDF (`application/pdf`,
+shown inline), on request and never stored: it prints the invoice as it is
+now, with the organization's current details and logo, the discount with its
+label, the tax line when there is a tax, and the amount paid so far. The page
+is HTML and CSS in `src/invoices/pdf/template.ts`, rendered by Chromium
+through `puppeteer`, with the Inter font embedded; `npm run pdf:preview`
+writes a sample to `tmp/invoice-preview.html` and `.pdf` to adjust the
+layout. Amounts print in Canadian dollars.
+
 ```sh
 curl -X POST localhost:3000/invoices \
   -H 'content-type: application/json' \
@@ -292,19 +302,24 @@ from `.env`: the database is `postgres://localhost:5432/cleanm_test` unless
 Tests live next to the code they cover, as `*.test.ts`. The shared test setup
 is `test/api.ts`.
 
+The PDF test renders a real PDF with the Chrome that `puppeteer` downloads
+when it is installed (`npm install` or `npm ci`). If that download was
+skipped, `npx puppeteer browsers install chrome` fetches it.
+
 ## Scripts
 
-| Script               | What it does                                              |
-| -------------------- | --------------------------------------------------------- |
-| `npm run dev`        | Starts the server and restarts it when a file changes     |
-| `npm start`          | Starts the server once                                    |
-| `npm run typecheck`  | Type-checks with `tsc`, no output files                   |
-| `npm run lint`       | Runs ESLint and checks formatting with Prettier           |
-| `npm run lint:fix`   | Fixes what ESLint can fix and formats files with Prettier |
-| `npm test`           | Runs the tests once against the test database             |
-| `npm run test:watch` | Runs the tests again when a file changes                  |
-| `npm run db:migrate` | Applies pending SQL migrations to `DATABASE_URL`          |
-| `npm run db:seed`    | Creates the development organization and prints its id    |
+| Script                | What it does                                              |
+| --------------------- | --------------------------------------------------------- |
+| `npm run dev`         | Starts the server and restarts it when a file changes     |
+| `npm start`           | Starts the server once                                    |
+| `npm run typecheck`   | Type-checks with `tsc`, no output files                   |
+| `npm run lint`        | Runs ESLint and checks formatting with Prettier           |
+| `npm run lint:fix`    | Fixes what ESLint can fix and formats files with Prettier |
+| `npm test`            | Runs the tests once against the test database             |
+| `npm run test:watch`  | Runs the tests again when a file changes                  |
+| `npm run db:migrate`  | Applies pending SQL migrations to `DATABASE_URL`          |
+| `npm run db:seed`     | Creates the development organization and prints its id    |
+| `npm run pdf:preview` | Renders a sample invoice to `tmp/` to adjust the layout   |
 
 TypeScript runs directly on Node (native type stripping), so there is no build step.
 

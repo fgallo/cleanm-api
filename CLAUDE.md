@@ -13,7 +13,9 @@ PostgreSQL 18 with `pg` and hand-written SQL, migrations as SQL files in
 `migrations/` applied by `src/db/migrate.ts`, Zod 4 for input validation,
 Vitest 5 for endpoint tests (native `fetch`, real database `cleanm_test`),
 hand-written authentication (session cookie backed by a `sessions` table,
-passwords hashed with `node:crypto` scrypt; see `src/auth/`).
+passwords hashed with `node:crypto` scrypt; see `src/auth/`), invoice PDFs
+as an HTML page (`src/invoices/pdf/template.ts`) rendered by Chromium
+through `puppeteer`.
 
 API conventions (camelCase JSON, status codes, error shape, how the signed-in
 user sets the organization) are in the brief, section 5. Anything that touches
@@ -21,7 +23,7 @@ authentication gets the security checklist in the brief, section 8.
 
 ## Commands
 
-npm run dev | npm run typecheck | npm run lint | npm test | npm run db:migrate | npm run db:seed
+npm run dev | npm run typecheck | npm run lint | npm test | npm run db:migrate | npm run db:seed | npm run pdf:preview
 
 ## Git: the human owns it
 
