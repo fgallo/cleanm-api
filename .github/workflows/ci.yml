@@ -37,7 +37,14 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
+      # Invoice PDFs are rendered by Chromium, which puppeteer downloads on
+      # install (~170 MB); keep it between runs.
+      - uses: actions/cache@v5
+        with:
+          path: ~/.cache/puppeteer
+          key: puppeteer-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - run: npm ci
+      - run: npx puppeteer browsers install chrome
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run db:migrate
