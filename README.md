@@ -100,6 +100,7 @@ JSON in and out, camelCase keys. Errors always look like
 | `GET /payments/:id`                  |                                           | `200` or `404`                              |
 | `PATCH /payments/:id`                | any of the payment fields                 | `200` or `404`                              |
 | `DELETE /payments/:id`               |                                           | `204` or `404`                              |
+| `GET /revenue?year=`                 |                                           | `200` twelve months                         |
 
 Every route except `/health` and `POST /auth/login` needs a signed-in user and
 answers `401 unauthorized` without one. Signing in sets the `cleanm_session`
@@ -269,6 +270,20 @@ curl -X POST localhost:3000/invoices/$INVOICE_ID/payments \
   -H 'content-type: application/json' \
   -d '{"method":"e_transfer","amountCents":11250}'
 # {"id":"...","invoiceId":"...","paidOn":"2026-10-19","method":"e_transfer","amountCents":11250,"notes":null,"createdAt":"...","updatedAt":"..."}
+```
+
+`GET /revenue?year=2026` answers the twelve months of the year (the current
+one on the organization's calendar when `year` is left out), zeros where
+nothing happened, each month on two bases side by side. By issue month:
+`invoicedCents` (totals of the invoices issued that month), `paidCents` (what
+came in for those invoices, whenever it did) and `outstandingCents` (the
+difference). By payment month: `receivedCents` (payments dated that month,
+whichever invoice they paid). And `uninvoicedCents`: completed jobs of that
+month with no invoice yet, at the job's price.
+
+```sh
+curl 'localhost:3000/revenue?year=2026'
+# {"year":2026,"months":[{"month":"2026-01","invoicedCents":0,"paidCents":0,"outstandingCents":0,"uninvoicedCents":0,"receivedCents":0},...]}
 ```
 
 ## Database
