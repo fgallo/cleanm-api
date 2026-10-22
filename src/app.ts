@@ -12,6 +12,7 @@ import { organizationRouter } from "./organizations/routes.ts";
 import { paymentsRouter } from "./payments/routes.ts";
 import { propertiesRouter } from "./properties/routes.ts";
 import { recurringSeriesRouter } from "./recurring-series/routes.ts";
+import { revenueRouter } from "./revenue/routes.ts";
 
 export const app = express();
 
@@ -36,6 +37,7 @@ app.use("/helpers", helpersRouter);
 app.use("/recurring-series", recurringSeriesRouter);
 app.use("/invoices", invoicesRouter);
 app.use(paymentsRouter);
+app.use("/revenue", revenueRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
