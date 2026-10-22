@@ -162,14 +162,10 @@ const columns = `
 // The amounts are derived from the invoice's own columns, never stored, so
 // editing the inputs cannot leave a stale total behind. One step per amount
 // because each one is computed on the rounded result of the previous: the
-// discount on the subtotal, the tax on the discounted subtotal.
-const joins = `
-  JOIN jobs j
-    ON j.organization_id = i.organization_id AND j.id = i.job_id
-  JOIN properties p
-    ON p.organization_id = j.organization_id AND p.id = j.property_id
-  JOIN clients c
-    ON c.organization_id = p.organization_id AND c.id = p.client_id
+// discount on the subtotal, the tax on the discounted subtotal. Exported so
+// the revenue query adds up exactly what the invoice shows; `i` must be the
+// invoices alias.
+export const amountJoins = `
   CROSS JOIN LATERAL (
     SELECT COALESCE(
       i.fixed_price_cents,
@@ -215,6 +211,16 @@ const joins = `
     FROM payments py
     WHERE py.organization_id = i.organization_id AND py.invoice_id = i.id
   ) paid
+`;
+
+const joins = `
+  JOIN jobs j
+    ON j.organization_id = i.organization_id AND j.id = i.job_id
+  JOIN properties p
+    ON p.organization_id = j.organization_id AND p.id = j.property_id
+  JOIN clients c
+    ON c.organization_id = p.organization_id AND c.id = p.client_id
+  ${amountJoins}
 `;
 
 export async function listInvoices(
