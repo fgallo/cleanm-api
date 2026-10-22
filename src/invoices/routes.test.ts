@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { createOrganization, startApi } from "../../test/api.ts";
+import {
+  createOrganization,
+  createSessionCookie,
+  startApi,
+} from "../../test/api.ts";
 import * as clients from "../clients/repository.ts";
 import * as jobs from "../jobs/repository.ts";
 import * as organizations from "../organizations/repository.ts";
@@ -8,6 +12,8 @@ import * as properties from "../properties/repository.ts";
 import * as invoices from "./repository.ts";
 
 const api = await startApi();
+// For the PDF requests, which the JSON helpers of test/api.ts cannot read.
+const cookie = await createSessionCookie(api.user);
 
 const missingId = "00000000-0000-7000-8000-000000000000";
 
@@ -835,5 +841,33 @@ describe("jobs and their invoice", () => {
     expect(res.status).toBe(409);
     expect(res.body).toMatchObject({ error: { code: "conflict" } });
     expect((await api.get(`/jobs/${job.id}`)).status).toBe(200);
+  });
+});
+
+describe("GET /invoices/:id/pdf", () => {
+  it("renders the invoice as a PDF", async () => {
+    const { propertyId } = await createProperty();
+    const invoice = await createInvoice((await createJob(propertyId)).id);
+
+    const res = await fetch(api.url(`/invoices/${invoice.id}/pdf`), {
+      headers: { cookie },
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("application/pdf");
+    expect(res.headers.get("content-disposition")).toBe(
+      `inline; filename="invoice-${invoice.number}.pdf"`,
+    );
+    const body = Buffer.from(await res.arrayBuffer());
+    expect(body.subarray(0, 5).toString()).toBe("%PDF-");
+    expect(body.length).toBeGreaterThan(10_000);
+  });
+
+  it("answers 404 for an invoice that does not exist", async () => {
+    const res = await fetch(api.url(`/invoices/${missingId}/pdf`), {
+      headers: { cookie },
+    });
+
+    expect(res.status).toBe(404);
   });
 });

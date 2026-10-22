@@ -14,6 +14,7 @@ import {
 } from "../src/auth/session.ts";
 import { pool } from "../src/db/pool.ts";
 import { single } from "../src/db/rows.ts";
+import { closeBrowser } from "../src/invoices/pdf/render.ts";
 
 export type ApiResponse<T> = { status: number; body: T };
 
@@ -102,6 +103,8 @@ export async function startApi() {
 
   afterAll(async () => {
     await new Promise((resolve) => server.close(resolve));
+    // Only files that rendered a PDF have a browser to close.
+    await closeBrowser();
     await deleteData();
     for (const table of ["sessions", "users", "organizations"]) {
       await pool.query(
