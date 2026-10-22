@@ -304,7 +304,10 @@ is `test/api.ts`.
 
 The PDF test renders a real PDF with the Chrome that `puppeteer` downloads
 when it is installed (`npm install` or `npm ci`). If that download was
-skipped, `npx puppeteer browsers install chrome` fetches it.
+skipped, `npx puppeteer browsers install chrome` fetches it. On Linux hosts
+that block unprivileged user namespaces (Ubuntu 23.10+, most containers,
+GitHub's runners) Chrome cannot start its sandbox: set
+`CHROMIUM_NO_SANDBOX=true`, as the CI workflow does.
 
 ## Scripts
 

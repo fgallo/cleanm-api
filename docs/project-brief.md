@@ -311,7 +311,10 @@ Before real data in production (deploy):
 
 - Chromium in the API image (`puppeteer` downloads it on `npm ci`; the
   official `puppeteer` Docker image has the system libraries) and 1 GB of
-  memory for the API service, for the invoice PDFs.
+  memory for the API service, for the invoice PDFs. Containers block the
+  user namespaces Chromium's sandbox needs: set `CHROMIUM_NO_SANDBOX=true`
+  there (the pages rendered are the API's own HTML, with every value
+  escaped), or run the image with a seccomp profile that allows them.
 - HTTPS only, `NODE_ENV=production`, `app.set("trust proxy", ...)` matching
   the host so rate limiting sees real addresses.
 - Secrets only in the host's environment; database backups; this repository

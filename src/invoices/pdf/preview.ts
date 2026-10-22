@@ -4,9 +4,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import puppeteer from "puppeteer";
-
-import { closeBrowser, renderPdf } from "./render.ts";
+import { closeBrowser, launchBrowser, renderPdf } from "./render.ts";
 import { sampleInvoice, sampleOrganization } from "./sample.ts";
 import { invoiceHtml } from "./template.ts";
 
@@ -14,7 +12,7 @@ const outDir = path.resolve(import.meta.dirname, "../../../tmp");
 
 // A logo drawn by the browser itself, so the preview needs no image file.
 async function sampleLogo(): Promise<Buffer> {
-  const browser = await puppeteer.launch();
+  const browser = await launchBrowser();
   try {
     const page = await browser.newPage();
     await page.setContent(`
