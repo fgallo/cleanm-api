@@ -179,6 +179,17 @@ more than one property.
   `multer` (multipart, meant for HTML forms; the clients are React and Swift
   sending a `File`), the server's disk (ephemeral on the deploy candidates)
   and object storage (another service for one small image per organization).
+- Invoice PDFs are an HTML and CSS page (`src/invoices/pdf/template.ts`, the
+  Inter font embedded) rendered by Chromium through `puppeteer`, on request
+  and never stored. Decided on 2026-10-22 for the owner's priorities: logo,
+  own fonts, and a layout that is easy to adjust (`npm run pdf:preview`
+  writes a sample HTML and PDF). Chosen over `pdfmake` (declarative layout of
+  its own, no preview), `pdfkit` (coordinates by hand), `@react-pdf/renderer`
+  (JSX needs a build step), `pdf-lib` and `jspdf` (no text layout engine).
+  The cost is Chromium in the deploy: ~170 MB in the image and 200 to 400 MB
+  of memory while rendering, so the API service needs 1 GB. On Railway or
+  Fly.io that is $1 to $3 a month more; on Render it means the $25 Standard
+  instance instead of the $7 Starter.
 
 ### API conventions
 
@@ -220,7 +231,6 @@ Introduce each one only when its roadmap step arrives, and explain the
 alternatives first.
 
 - Give more alternatives than the ones below:
-- `@react-pdf/renderer` for invoice PDFs
 - Web: React, Vite, TanStack Query, Tailwind, shadcn/ui, FullCalendar
   (`dayGridMonth` and `timeGridWeek` match the two calendar views)
 - Deploy: Cloudflare Pages for the web client; Railway, Render or Fly.io for
@@ -299,6 +309,9 @@ Done in step 6:
 
 Before real data in production (deploy):
 
+- Chromium in the API image (`puppeteer` downloads it on `npm ci`; the
+  official `puppeteer` Docker image has the system libraries) and 1 GB of
+  memory for the API service, for the invoice PDFs.
 - HTTPS only, `NODE_ENV=production`, `app.set("trust proxy", ...)` matching
   the host so rate limiting sees real addresses.
 - Secrets only in the host's environment; database backups; this repository
