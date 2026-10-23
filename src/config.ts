@@ -11,4 +11,10 @@ export const config = {
   // rendered are the API's own HTML, so the sandbox is a second line, not
   // the first.
   chromiumNoSandbox: process.env.CHROMIUM_NO_SANDBOX === "true",
+  // Browser origins allowed to call the API with the session cookie, comma
+  // separated (the web client). Empty means none: native apps need no CORS.
+  webOrigins: (process.env.WEB_ORIGINS ?? "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter((origin) => origin !== ""),
 };
