@@ -6,7 +6,11 @@ const databaseUrl =
 
 export default defineConfig({
   test: {
-    env: { DATABASE_URL: databaseUrl },
+    env: {
+      DATABASE_URL: databaseUrl,
+      // For the CORS tests: one allowed origin.
+      WEB_ORIGINS: "http://localhost:5173",
+    },
     globalSetup: "./test/global-setup.ts",
   },
 });

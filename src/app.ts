@@ -1,9 +1,11 @@
+import cors from "cors";
 import express from "express";
 import helmet from "helmet";
 
 import { authRouter } from "./auth/routes.ts";
 import { authenticate, requireSession } from "./auth/session.ts";
 import { clientsRouter } from "./clients/routes.ts";
+import { config } from "./config.ts";
 import { helpersRouter } from "./helpers/routes.ts";
 import { errorHandler, notFoundHandler } from "./http/error-handler.ts";
 import { invoicesRouter } from "./invoices/routes.ts";
@@ -17,7 +19,13 @@ import { revenueRouter } from "./revenue/routes.ts";
 export const app = express();
 
 app.disable("x-powered-by");
-app.use(helmet());
+// same-site instead of helmet's same-origin: the web client, on another
+// origin of the same site (app.* next to api.*, or another localhost port),
+// loads the organization logo in an <img>.
+app.use(helmet({ crossOriginResourcePolicy: { policy: "same-site" } }));
+// The web client sends the session cookie from its own origin: it must be
+// listed, and credentials must be allowed. Preflights are answered here.
+app.use(cors({ origin: config.webOrigins, credentials: true }));
 app.use(express.json());
 app.use(authenticate);
 
