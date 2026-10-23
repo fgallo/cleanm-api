@@ -110,6 +110,13 @@ email or password answers `401 invalid_credentials` with the same message for
 both, and more than ten attempts on one email in fifteen minutes answers
 `429 too_many_requests`. Signing out deletes the session.
 
+A browser client on another origin, such as the web client on
+`http://localhost:5173`, must be listed in `WEB_ORIGINS` (comma separated):
+the API then answers its preflights and lets the session cookie travel
+(`credentials: "include"` on the client's side). The cookie is `SameSite=Lax`,
+so the client and the API must share a site: another port of `localhost`
+works, and so do two subdomains of one domain.
+
 The organization is a single resource, the signed-in user's. Its settings
 are what invoices print and how they are computed: `name`, `timezone` (an
 IANA name), the address (`addressLine1`, `addressLine2`, `city`, `province`,

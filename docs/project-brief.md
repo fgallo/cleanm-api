@@ -173,6 +173,13 @@ more than one property.
 - `helmet` for the standard security headers and `express-rate-limit` for
   sign-in attempts, by address and by email. Both are the most used; the
   counters live in memory until there is more than one process.
+- `cors` for the web client's origin (`WEB_ORIGINS`, comma separated, with
+  credentials so the session cookie travels). Chosen over hand-written
+  headers (preflight, `Vary` and header echoing are easy to get subtly
+  wrong) and over a proxy (the web client and the API will live on different
+  hosts). Native apps need no CORS. `helmet`'s
+  `Cross-Origin-Resource-Policy` is `same-site`, so the web client can embed
+  the organization logo in an `<img>`.
 - The organization logo is uploaded as the raw request body
   (`PUT /organization/logo`, `express.raw`, PNG or JPEG up to 1 MB, file
   signature checked) and stored in PostgreSQL as `bytea`. Chosen over
@@ -317,6 +324,11 @@ Before real data in production (deploy):
   escaped), or run the image with a seccomp profile that allows them.
 - HTTPS only, `NODE_ENV=production`, `app.set("trust proxy", ...)` matching
   the host so rate limiting sees real addresses.
+- The web client and the API under the same registrable domain
+  (`app.example.ca` and `api.example.ca`): the session cookie is
+  `SameSite=Lax`, which browsers only send to the same site, so the hosts'
+  own subdomains (`*.pages.dev`, `*.up.railway.app`) would break sign-in.
+  `WEB_ORIGINS` set to the web client's origin.
 - Secrets only in the host's environment; database backups; this repository
   private; Dependabot version updates enabled.
 - Logs never contain passwords, cookies or tokens.
