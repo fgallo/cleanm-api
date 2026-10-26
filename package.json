@@ -31,6 +31,7 @@
     "start": "node --env-file-if-exists=.env src/server.ts",
     "db:migrate": "node --env-file-if-exists=.env src/db/migrate.ts",
     "db:seed": "node --env-file-if-exists=.env src/db/seed.ts",
+    "db:seed:sample": "node --env-file-if-exists=.env src/db/seed-sample.ts",
     "pdf:preview": "node src/invoices/pdf/preview.ts"
   },
   "dependencies": {
