@@ -4,11 +4,34 @@ import { startApi } from "../test/api.ts";
 
 const api = await startApi();
 
-describe("GET /health", () => {
-  it("answers ok", async () => {
-    const res = await api.get("/health");
+describe("trust proxy", () => {
+  // TRUST_PROXY=1 in vitest.config.ts. The sign-in limiter counts per client
+  // address, and its RateLimit header shows which address a request was
+  // credited to: an address not seen before has 99 of 100 attempts left.
+  async function attemptsLeft(address: string): Promise<number> {
+    const response = await fetch(api.url("/auth/login"), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-forwarded-for": address,
+      },
+      body: JSON.stringify({
+        email: `${address.replaceAll(".", "-")}@example.com`,
+        password: "wrong password",
+      }),
+    });
+    expect(response.status).toBe(401);
+    const match = /"100-in-15min"; r=(\d+)/.exec(
+      response.headers.get("ratelimit") ?? "",
+    );
+    expect(match).not.toBeNull();
+    return Number(match?.[1]);
+  }
 
-    expect(res).toEqual({ status: 200, body: { status: "ok" } });
+  it("takes the client address from X-Forwarded-For", async () => {
+    expect(await attemptsLeft("203.0.113.1")).toBe(99);
+    expect(await attemptsLeft("203.0.113.2")).toBe(99);
+    expect(await attemptsLeft("203.0.113.1")).toBe(98);
   });
 });
 
