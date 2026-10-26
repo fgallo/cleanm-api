@@ -6,6 +6,7 @@ import { authRouter } from "./auth/routes.ts";
 import { authenticate, requireSession } from "./auth/session.ts";
 import { clientsRouter } from "./clients/routes.ts";
 import { config } from "./config.ts";
+import { healthRouter } from "./health/routes.ts";
 import { helpersRouter } from "./helpers/routes.ts";
 import { errorHandler, notFoundHandler } from "./http/error-handler.ts";
 import { invoicesRouter } from "./invoices/routes.ts";
@@ -19,6 +20,9 @@ import { revenueRouter } from "./revenue/routes.ts";
 export const app = express();
 
 app.disable("x-powered-by");
+// Behind the host's proxy, the client address and protocol come from the
+// X-Forwarded-* headers it sets; with no proxy, those headers are ignored.
+app.set("trust proxy", config.trustProxy);
 // same-site instead of helmet's same-origin: the web client, on another
 // origin of the same site (app.* next to api.*, or another localhost port),
 // loads the organization logo in an <img>.
@@ -29,10 +33,7 @@ app.use(cors({ origin: config.webOrigins, credentials: true }));
 app.use(express.json());
 app.use(authenticate);
 
-app.get("/health", (_req, res) => {
-  res.json({ status: "ok" });
-});
-
+app.use("/health", healthRouter);
 app.use("/auth", authRouter);
 
 // Everything below belongs to the signed-in user's organization.
