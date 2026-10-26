@@ -10,6 +10,8 @@ export default defineConfig({
       DATABASE_URL: databaseUrl,
       // For the CORS tests: one allowed origin.
       WEB_ORIGINS: "http://localhost:5173",
+      // For the trust proxy test: one proxy in front, as on the hosts.
+      TRUST_PROXY: "1",
     },
     globalSetup: "./test/global-setup.ts",
   },
