@@ -1,0 +1,18 @@
+# Version updates as pull requests, checked by CI like any other. Minor and
+# patch updates arrive grouped in one pull request a week; a major update
+# gets its own, since it may need code changes.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
