@@ -206,12 +206,14 @@ more than one property.
   invalid input or JSON, `401` no session or wrong credentials, `404` not
   found, `409` delete refused because other records still reference the row,
   `413` body above the limit, `415` body of a type the route does not take,
-  `429` too many sign-in attempts, `500` unexpected.
+  `429` too many sign-in attempts, `500` unexpected, `503` the database
+  cannot be reached (`GET /health` only).
 - Errors always have the shape
   `{ "error": { "code", "message", "issues"?: [{ "path", "message" }] } }`
   with `code` in `validation_error`, `invalid_json`, `unauthorized`,
   `invalid_credentials`, `not_found`, `conflict`, `payload_too_large`,
-  `unsupported_media_type`, `too_many_requests`, `internal_error`. An id in
+  `unsupported_media_type`, `too_many_requests`, `internal_error`,
+  `service_unavailable`. An id in
   the body that points at nothing (such as
   `propertyId` on `POST /jobs`) is a `validation_error` on that field.
 - Partial updates use `PATCH`; a field set to `null` clears it.
@@ -317,6 +319,20 @@ Done in step 6:
 - `helmet` headers. Tenant isolation by `organization_id` in every query and
   composite foreign keys in the database.
 
+Done after step 7 (production readiness):
+
+- `TRUST_PROXY` (number of proxies in front) is honoured, so `req.ip` and
+  the sign-in rate limiter see the client behind the host's proxy, and a
+  client cannot forge `X-Forwarded-For` when no proxy is trusted.
+- Graceful shutdown on `SIGTERM` and `SIGINT`: stop listening, finish the
+  requests in flight, close Chromium and the database pool, 10-second grace
+  period.
+- `GET /health` checks the database and answers `503` when it is unreachable,
+  so a wrong `DATABASE_URL` fails the deploy's health check instead of
+  passing silently.
+- Dependabot version updates (`.github/dependabot.yml`): weekly, minor and
+  patch updates grouped in one pull request, checked by CI.
+
 Before real data in production (deploy):
 
 - Chromium in the API image (`puppeteer` downloads it on `npm ci`; the
@@ -325,15 +341,15 @@ Before real data in production (deploy):
   user namespaces Chromium's sandbox needs: set `CHROMIUM_NO_SANDBOX=true`
   there (the pages rendered are the API's own HTML, with every value
   escaped), or run the image with a seccomp profile that allows them.
-- HTTPS only, `NODE_ENV=production`, `app.set("trust proxy", ...)` matching
-  the host so rate limiting sees real addresses.
+- HTTPS only, `NODE_ENV=production`, `TRUST_PROXY=1` (one proxy in front on
+  Railway, Render and Fly.io).
 - The web client and the API under the same registrable domain
   (`app.example.ca` and `api.example.ca`): the session cookie is
   `SameSite=Lax`, which browsers only send to the same site, so the hosts'
   own subdomains (`*.pages.dev`, `*.up.railway.app`) would break sign-in.
   `WEB_ORIGINS` set to the web client's origin.
 - Secrets only in the host's environment; database backups; this repository
-  private; Dependabot version updates enabled.
+  private.
 - Logs never contain passwords, cookies or tokens.
 
 Before the first external customer:

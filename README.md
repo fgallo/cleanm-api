@@ -54,9 +54,18 @@ It does nothing on an organization that already has clients; to start over,
 see Database below.
 
 Configuration comes from environment variables, loaded from `.env` when the
-file exists (see `.env.example`): `PORT` (default `3000`), `DATABASE_URL` and
-`SEED_ADMIN_PASSWORD` (only read by `npm run db:seed`). `NODE_ENV=production`
-turns on what only works behind HTTPS, such as the `Secure` cookie flag.
+file exists (see `.env.example`): `PORT` (default `3000`), `DATABASE_URL`,
+`SEED_ADMIN_PASSWORD` (only read by `npm run db:seed`) and `TRUST_PROXY`, the
+number of proxies in front of the API (default `0`, `1` on the usual hosts),
+so the client address comes from `X-Forwarded-For` and sign-in rate limiting
+counts real addresses. `NODE_ENV=production` turns on what only works behind
+HTTPS, such as the `Secure` cookie flag.
+
+`GET /health` answers `200` when the database answers and `503` otherwise,
+for the host's health check. On `SIGTERM` (what hosts send on a deploy) or
+Ctrl-C, the server stops accepting connections, finishes the requests in
+flight, closes Chromium and the database pool, and exits; whatever is still
+running after 10 seconds is dropped.
 
 ## API
 
@@ -66,7 +75,7 @@ JSON in and out, camelCase keys. Errors always look like
 
 | Method and path                      | Body                                      | Response                                    |
 | ------------------------------------ | ----------------------------------------- | ------------------------------------------- |
-| `GET /health`                        |                                           | `200`                                       |
+| `GET /health`                        |                                           | `200` or `503`                              |
 | `POST /auth/login`                   | `{ email, password }`                     | `200` user and organization, `401` or `429` |
 | `POST /auth/logout`                  |                                           | `204`                                       |
 | `GET /auth/me`                       |                                           | `200` user and organization                 |
