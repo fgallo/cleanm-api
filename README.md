@@ -43,6 +43,16 @@ curl -b cookies.txt localhost:3000/clients
 # []
 ```
 
+To have something to look at, fill the organization with invented clients,
+visits, invoices and payments, all placed around today:
+
+```sh
+npm run db:seed:sample
+```
+
+It does nothing on an organization that already has clients; to start over,
+see Database below.
+
 Configuration comes from environment variables, loaded from `.env` when the
 file exists (see `.env.example`): `PORT` (default `3000`), `DATABASE_URL` and
 `SEED_ADMIN_PASSWORD` (only read by `npm run db:seed`). `NODE_ENV=production`
@@ -302,7 +312,8 @@ Each file runs inside a transaction: if it fails, nothing from it is kept.
 
 To add a migration, create the next numbered file and run `npm run db:migrate`.
 There are no down migrations; to start over locally,
-`dropdb cleanm_dev && createdb cleanm_dev`.
+`dropdb cleanm_dev && createdb cleanm_dev`, then `npm run db:migrate`,
+`npm run db:seed` and `npm run db:seed:sample` again.
 
 ## Tests
 
@@ -333,18 +344,19 @@ GitHub's runners) Chrome cannot start its sandbox: set
 
 ## Scripts
 
-| Script                | What it does                                              |
-| --------------------- | --------------------------------------------------------- |
-| `npm run dev`         | Starts the server and restarts it when a file changes     |
-| `npm start`           | Starts the server once                                    |
-| `npm run typecheck`   | Type-checks with `tsc`, no output files                   |
-| `npm run lint`        | Runs ESLint and checks formatting with Prettier           |
-| `npm run lint:fix`    | Fixes what ESLint can fix and formats files with Prettier |
-| `npm test`            | Runs the tests once against the test database             |
-| `npm run test:watch`  | Runs the tests again when a file changes                  |
-| `npm run db:migrate`  | Applies pending SQL migrations to `DATABASE_URL`          |
-| `npm run db:seed`     | Creates the development organization and prints its id    |
-| `npm run pdf:preview` | Renders a sample invoice to `tmp/` to adjust the layout   |
+| Script                   | What it does                                              |
+| ------------------------ | --------------------------------------------------------- |
+| `npm run dev`            | Starts the server and restarts it when a file changes     |
+| `npm start`              | Starts the server once                                    |
+| `npm run typecheck`      | Type-checks with `tsc`, no output files                   |
+| `npm run lint`           | Runs ESLint and checks formatting with Prettier           |
+| `npm run lint:fix`       | Fixes what ESLint can fix and formats files with Prettier |
+| `npm test`               | Runs the tests once against the test database             |
+| `npm run test:watch`     | Runs the tests again when a file changes                  |
+| `npm run db:migrate`     | Applies pending SQL migrations to `DATABASE_URL`          |
+| `npm run db:seed`        | Creates the development organization and prints its id    |
+| `npm run db:seed:sample` | Fills the development organization with invented data     |
+| `npm run pdf:preview`    | Renders a sample invoice to `tmp/` to adjust the layout   |
 
 TypeScript runs directly on Node (native type stripping), so there is no build step.
 

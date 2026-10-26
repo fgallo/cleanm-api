@@ -23,7 +23,7 @@ authentication gets the security checklist in the brief, section 8.
 
 ## Commands
 
-npm run dev | npm run typecheck | npm run lint | npm test | npm run db:migrate | npm run db:seed | npm run pdf:preview
+npm run dev | npm run typecheck | npm run lint | npm test | npm run db:migrate | npm run db:seed | npm run db:seed:sample | npm run pdf:preview
 
 ## Git: the human owns it
 
