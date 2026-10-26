@@ -225,7 +225,10 @@ more than one property.
   `requireSession` guards every route after `/health` and `/auth`. Routes and
   repositories only read `res.locals`, so that module is the only place to
   replace if the authentication mechanism ever changes.
-  `npm run db:seed` creates the development organization and its two admins.
+  `npm run db:seed` creates the development organization and its two admins;
+  `npm run db:seed:sample` fills it with invented clients, visits, invoices
+  and payments placed around today (`src/db/sample-data.ts`, built through
+  the repositories and services so it obeys the same rules as the API).
 - Layers: `routes` (HTTP, validation, status codes) and `repository` (SQL,
   always filtered by `organization_id`). A `service` module holds business
   rules that span several queries; the first one is
