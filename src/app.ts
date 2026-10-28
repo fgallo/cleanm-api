@@ -11,6 +11,7 @@ import { helpersRouter } from "./helpers/routes.ts";
 import { errorHandler, notFoundHandler } from "./http/error-handler.ts";
 import { invoicesRouter } from "./invoices/routes.ts";
 import { jobsRouter } from "./jobs/routes.ts";
+import { requestLogger } from "./log.ts";
 import { organizationRouter } from "./organizations/routes.ts";
 import { paymentsRouter } from "./payments/routes.ts";
 import { propertiesRouter } from "./properties/routes.ts";
@@ -23,6 +24,8 @@ app.disable("x-powered-by");
 // Behind the host's proxy, the client address and protocol come from the
 // X-Forwarded-* headers it sets; with no proxy, those headers are ignored.
 app.set("trust proxy", config.trustProxy);
+// First, so every request is logged, including preflights and 404s.
+app.use(requestLogger());
 // same-site instead of helmet's same-origin: the web client, on another
 // origin of the same site (app.* next to api.*, or another localhost port),
 // loads the organization logo in an <img>.
