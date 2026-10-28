@@ -4,6 +4,16 @@ import { startApi } from "../test/api.ts";
 
 const api = await startApi();
 
+describe("request id", () => {
+  it("is on every response, for the user to quote", async () => {
+    const response = await fetch(api.url("/health"));
+
+    expect(response.headers.get("x-request-id")).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    );
+  });
+});
+
 describe("trust proxy", () => {
   // TRUST_PROXY=1 in vitest.config.ts. The sign-in limiter counts per client
   // address, and its RateLimit header shows which address a request was

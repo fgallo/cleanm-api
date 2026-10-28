@@ -12,6 +12,9 @@ export default defineConfig({
       WEB_ORIGINS: "http://localhost:5173",
       // For the trust proxy test: one proxy in front, as on the hosts.
       TRUST_PROXY: "1",
+      // The request log would bury the test output; log.test.ts uses its
+      // own logger.
+      LOG_LEVEL: "silent",
     },
     globalSetup: "./test/global-setup.ts",
   },

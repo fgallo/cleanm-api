@@ -8,10 +8,10 @@ type Server = { child: ChildProcess; port: number; output: () => string };
 
 // The server runs as its own process, as in production, so the signal
 // handling under test is the real thing. PORT=0 takes a free port, printed
-// in the first line of output.
+// in the first line of output (the tests' LOG_LEVEL=silent would hide it).
 async function startServer(): Promise<Server> {
   const child = spawn(process.execPath, ["src/server.ts"], {
-    env: { ...process.env, PORT: "0" },
+    env: { ...process.env, PORT: "0", LOG_LEVEL: "info" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let output = "";
