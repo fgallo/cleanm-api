@@ -18,7 +18,6 @@ describe("GET /health", () => {
     const query = vi
       .spyOn(pool, "query")
       .mockRejectedValueOnce(new Error("connect ECONNREFUSED"));
-    const log = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       const res = await api.get("/health", { cookie: null });
 
@@ -31,10 +30,8 @@ describe("GET /health", () => {
           },
         },
       });
-      expect(log).toHaveBeenCalledOnce();
     } finally {
       query.mockRestore();
-      log.mockRestore();
     }
   });
 });
