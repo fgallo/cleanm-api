@@ -90,24 +90,31 @@ describe("POST /auth/login", () => {
     });
   });
 
-  it("answers 429 after ten attempts on one email", async () => {
-    const email = `target-${api.organizationId}@example.com`;
-    for (let attempt = 0; attempt < 10; attempt++) {
-      expect((await login(email, "guess")).status).toBe(401);
-    }
+  // Twelve sign-ins, each verifying a password with scrypt at the production
+  // cost: about half a second apiece on a CI runner, more than Vitest's
+  // 5-second default allows.
+  it(
+    "answers 429 after ten attempts on one email",
+    { timeout: 30_000 },
+    async () => {
+      const email = `target-${api.organizationId}@example.com`;
+      for (let attempt = 0; attempt < 10; attempt++) {
+        expect((await login(email, "guess")).status).toBe(401);
+      }
 
-    const res = await login(email, "guess");
+      const res = await login(email, "guess");
 
-    expect(res.status).toBe(429);
-    expect(res.body).toEqual({
-      error: {
-        code: "too_many_requests",
-        message: "Too many attempts, try again later",
-      },
-    });
-    // Other accounts are not affected.
-    expect((await login(api.user.email, testPassword)).status).toBe(200);
-  });
+      expect(res.status).toBe(429);
+      expect(res.body).toEqual({
+        error: {
+          code: "too_many_requests",
+          message: "Too many attempts, try again later",
+        },
+      });
+      // Other accounts are not affected.
+      expect((await login(api.user.email, testPassword)).status).toBe(200);
+    },
+  );
 });
 
 describe("GET /auth/me", () => {
