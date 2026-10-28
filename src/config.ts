@@ -6,6 +6,8 @@ export const config = {
   port: integerEnv("PORT", 3000),
   // Turns on what only makes sense behind HTTPS, such as Secure cookies.
   production: process.env.NODE_ENV === "production",
+  // debug, info, warn, error or silent. Each request is one info line.
+  logLevel: process.env.LOG_LEVEL ?? "info",
   // Number of proxies in front of the API (1 on Railway, Render and Fly.io).
   // The client address is then read from X-Forwarded-For, so rate limiting
   // counts real addresses instead of the proxy's. 0 trusts no proxy, so a

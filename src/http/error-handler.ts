@@ -14,7 +14,7 @@ export const notFoundHandler: RequestHandler = (req, res) => {
 };
 
 // Express only treats a function with four parameters as an error handler.
-export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
+export const errorHandler: ErrorRequestHandler = (error, req, res, _next) => {
   if (error instanceof ZodError) {
     res.status(400).json({
       error: {
@@ -75,7 +75,8 @@ export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
     return;
   }
 
-  console.error(error);
+  // With the request id, so the line can be matched to the request's own.
+  req.log.error({ err: error }, "Unhandled error");
   res.status(500).json({
     error: { code: "internal_error", message: "Something went wrong" },
   });

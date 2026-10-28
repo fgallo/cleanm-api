@@ -4,10 +4,11 @@ import { app } from "./app.ts";
 import { config } from "./config.ts";
 import { pool } from "./db/pool.ts";
 import { closeBrowser } from "./invoices/pdf/render.ts";
+import { log } from "./log.ts";
 
 const server = app.listen(config.port, () => {
   const { port } = server.address() as AddressInfo;
-  console.log(`Server listening on http://localhost:${port}`);
+  log.info(`Server listening on http://localhost:${port}`);
 });
 
 // Hosts send SIGTERM on every deploy and when scaling down; Ctrl-C sends
@@ -19,9 +20,9 @@ const server = app.listen(config.port, () => {
 const gracePeriodMs = 10_000;
 
 function shutdown(signal: NodeJS.Signals): void {
-  console.log(`${signal} received, shutting down`);
+  log.info(`${signal} received, shutting down`);
   const deadline = setTimeout(() => {
-    console.error("Shutdown took too long, exiting");
+    log.error("Shutdown took too long, exiting");
     process.exit(1);
   }, gracePeriodMs);
   // Does not keep the process alive on its own: once everything is closed,
@@ -37,7 +38,7 @@ function shutdown(signal: NodeJS.Signals): void {
         await closeBrowser();
         await pool.end();
       } catch (failure) {
-        console.error(failure);
+        log.error({ err: failure }, "Shutdown failed");
         process.exitCode = 1;
       } finally {
         clearTimeout(deadline);
