@@ -180,6 +180,15 @@ more than one property.
   hosts). Native apps need no CORS. `helmet`'s
   `Cross-Origin-Resource-Policy` is `same-site`, so the web client can embed
   the organization logo in an `<img>`.
+- `pino` with `pino-http` for logs (decided 2026-10-27): one JSON line per
+  request with method, path, status, duration, client address and a request
+  id (also sent back as `X-Request-Id`), levels from `LOG_LEVEL`, and
+  `redact` so passwords, cookies and authorization headers never reach a log
+  line; `pino-pretty` makes the lines readable in a terminal. Chosen over
+  `morgan` (text only, no levels or redaction), `winston` with
+  `express-winston` (the HTTP middleware is little used) and a hand-written
+  middleware (no dependency, but levels and redaction would be reinvented).
+  Downloads per week: pino 37M, winston 17M, morgan 9M, pino-http 4M.
 - The organization logo is uploaded as the raw request body
   (`PUT /organization/logo`, `express.raw`, PNG or JPEG up to 1 MB, file
   signature checked) and stored in PostgreSQL as `bytea`. Chosen over
@@ -332,6 +341,9 @@ Done after step 7 (production readiness):
   passing silently.
 - Dependabot version updates (`.github/dependabot.yml`): weekly, minor and
   patch updates grouped in one pull request, checked by CI.
+- Request logging with `pino`: one line per request with a request id,
+  `/health` left out, and passwords, cookies and authorization headers
+  redacted wherever they would appear.
 
 Before real data in production (deploy):
 
@@ -350,7 +362,6 @@ Before real data in production (deploy):
   `WEB_ORIGINS` set to the web client's origin.
 - Secrets only in the host's environment; database backups; this repository
   private.
-- Logs never contain passwords, cookies or tokens.
 
 Before the first external customer:
 

@@ -55,7 +55,8 @@ see Database below.
 
 Configuration comes from environment variables, loaded from `.env` when the
 file exists (see `.env.example`): `PORT` (default `3000`), `DATABASE_URL`,
-`SEED_ADMIN_PASSWORD` (only read by `npm run db:seed`) and `TRUST_PROXY`, the
+`SEED_ADMIN_PASSWORD` (only read by `npm run db:seed`), `LOG_LEVEL` (`info`
+by default; `debug`, `warn`, `error` or `silent`) and `TRUST_PROXY`, the
 number of proxies in front of the API (default `0`, `1` on the usual hosts),
 so the client address comes from `X-Forwarded-For` and sign-in rate limiting
 counts real addresses. `NODE_ENV=production` turns on what only works behind
@@ -66,6 +67,12 @@ for the host's health check. On `SIGTERM` (what hosts send on a deploy) or
 Ctrl-C, the server stops accepting connections, finishes the requests in
 flight, closes Chromium and the database pool, and exits; whatever is still
 running after 10 seconds is dropped.
+
+Every request is logged when its response ends, as one JSON line (made
+readable when the output is a terminal, as with `npm run dev`): method, path,
+status, duration, client address and a request id, which the response also
+carries as `X-Request-Id`. Health checks are not logged, and passwords,
+cookies and authorization headers are redacted wherever they would appear.
 
 ## API
 
