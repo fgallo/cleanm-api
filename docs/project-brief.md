@@ -16,11 +16,11 @@ client management, scheduling, invoicing and revenue lookup.
 
 Separate repositories, no monorepo, no shared package.
 
-| Repo         | Purpose                                  | Status                               |
-| ------------ | ---------------------------------------- | ------------------------------------ |
-| `cleanm-api` | REST API (this repo)                     | in progress                          |
-| `cleanm-web` | React web client                         | starts after the clients CRUD exists |
-| `cleanm-ios` | Native iOS client, hand-written in Swift | later                                |
+| Repo         | Purpose                                  | Status                             |
+| ------------ | ---------------------------------------- | ---------------------------------- |
+| `cleanm-api` | REST API (this repo)                     | in progress                        |
+| `cleanm-web` | React web client                         | in progress, scaffolded 2026-10-30 |
+| `cleanm-ios` | Native iOS client, hand-written in Swift | later                              |
 
 Naming pattern: `<product>-<platform>`, lowercase, hyphenated.
 Local layout: all repos side by side under `~/Projects/cleanm/`.
@@ -246,14 +246,79 @@ more than one property.
   `src/recurring-series/service.ts`. Modules without such rules have no
   service.
 
+### Decided for the web client
+
+Compared on 2026-10-30, before anything was installed: weekly npm downloads,
+peer ranges against React 19.3 and against each other, and what a later
+switch would cost. Each library enters the repo when its step needs it; the
+scaffold carries only the build, lint and test tooling.
+
+- Vite 8 (`@vitejs/plugin-react`, Rolldown underneath) for the dev server
+  and the build; Vitest shares its configuration. Chosen over Next.js and
+  TanStack Start (frameworks with a server of their own; the API is separate
+  and the client deploys as static files), Rsbuild (sound, an ecosystem a
+  hundred times smaller), webpack (configuration by hand), Parcel and Create
+  React App (deprecated). Cheap to replace: one config file and `index.html`.
+  Downloads per week: vite 252M, next 91M, webpack 76M, @rsbuild/core 2.3M.
+- TypeScript 6 pinned with `~6.0`, for the same reason as the API:
+  `typescript-eslint` does not accept 7 yet; both repos move together. The
+  official Vite template now ships TypeScript 7 with oxlint; the web client
+  keeps ESLint (flat config, `typescript-eslint`, `eslint-plugin-react-hooks`,
+  `eslint-plugin-react-refresh`) and Prettier for parity with the API.
+- Vitest 5 with Testing Library and jsdom for component tests; Playwright
+  when end-to-end tests arrive. Downloads per week: vitest 170M,
+  @testing-library/react 90M, jsdom 151M, happy-dom 32M.
+- React Router 8 in declarative mode (the package is `react-router`;
+  `react-router-dom` no longer exists in v8). Not in the original proposal,
+  but a single-page client with four screens needs one. Chosen over TanStack
+  Router (typed routes through a Vite plugin and a generated route tree, not
+  worth it for a handful of routes) and wouter (no data APIs). Cheap to
+  replace: the routes live in one file. Downloads per week: react-router
+  74M, @tanstack/react-router 22M, wouter 2.7M.
+- TanStack Query 5 over the native `fetch`, no axios. Chosen over RTK Query
+  (needs a Redux store the client has no other use for) and SWR (fewer
+  mutation helpers, no devtools). API calls live in `src/api/` with query key
+  factories, so a switch stays local. Downloads per week:
+  @tanstack/react-query 79M, @reduxjs/toolkit 46M, swr 26M.
+- Tailwind 4 through `@tailwindcss/vite`. Chosen over CSS Modules (no
+  dependency, but shadcn and FullCalendar 7's theme system are built for
+  Tailwind), Emotion and styled-components (CSS-in-JS at runtime, the latter
+  in maintenance mode since 2025), vanilla-extract, StyleX and Panda (small
+  ecosystems). The costliest to replace after React itself: classes in every
+  component. Downloads per week: tailwindcss 168M, sass 43M, @emotion/react
+  28M, styled-components 15M.
+- shadcn/ui on Base UI, its default since 2026-07-02; the init flag
+  `-b radix` keeps Radix. The components are copied into
+  `src/components/ui`, so there is no library to be locked into: a switch
+  is per component.
+  Chosen over MUI (Emotion, Material look), Mantine (complete; the
+  alternative if Tailwind were dropped), Ant Design, Chakra, Headless UI (ten
+  components) and React Aria Components (also available as a shadcn base).
+  Downloads per week: @base-ui/react 26M, radix-ui 25M, shadcn 17M,
+  @mui/material 14M, @mantine/core 3.7M.
+- FullCalendar 7, standard MIT packages (`@fullcalendar/react`, with
+  `temporal-polyfill` as its peer): `dayGridMonth` and `timeGridWeek` are the
+  two calendar views. v7 (2026-06-19) is implemented in React itself, ships
+  no CSS of its own and has shadcn and Tailwind theme support; the premium
+  packages (resources, timeline; AGPL or commercial) are not needed. The
+  calendar lives in one component that maps jobs to events, so nothing else
+  imports FullCalendar. Chosen over react-big-calendar (needs a date
+  localizer, drag and drop as an add-on, one release in 2026), Schedule-X
+  (Preact inside, premium features paid, pins an old `temporal-polyfill`),
+  commercial schedulers (DevExtreme, Syncfusion) and writing the week view by
+  hand. Downloads per week: @fullcalendar/core 3.6M, react-big-calendar
+  1.6M, @schedule-x/calendar 0.24M.
+- No date library yet. `temporal-polyfill` arrives with FullCalendar, and
+  `Temporal.PlainDate` and `PlainTime` match a job's `date` and `time`
+  columns (design rule 4); the choice is made when the first date
+  computation appears. Downloads per week: date-fns 119M, dayjs 107M, luxon
+  57M, temporal-polyfill 6.9M.
+
 ### Proposed, not decided
 
 Introduce each one only when its roadmap step arrives, and explain the
 alternatives first.
 
-- Give more alternatives than the ones below:
-- Web: React, Vite, TanStack Query, Tailwind, shadcn/ui, FullCalendar
-  (`dayGridMonth` and `timeGridWeek` match the two calendar views)
 - Deploy: Cloudflare Pages for the web client; Railway, Render or Fly.io for
   the API and Postgres
 
