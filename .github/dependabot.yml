@@ -17,6 +17,10 @@ updates:
       # section 5). Remove this entry when it accepts 7.
       - dependency-name: typescript
         update-types: ["version-update:semver-major"]
+      # The major of @types/node follows the Node major in .nvmrc: both move
+      # together, by hand.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
