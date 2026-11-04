@@ -12,6 +12,11 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      # TypeScript 7 waits for typescript-eslint, which requires < 6.1 (brief,
+      # section 5). Remove this entry when it accepts 7.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
