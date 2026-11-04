@@ -404,8 +404,12 @@ Done after step 7 (production readiness):
 - `GET /health` checks the database and answers `503` when it is unreachable,
   so a wrong `DATABASE_URL` fails the deploy's health check instead of
   passing silently.
-- Dependabot version updates (`.github/dependabot.yml`): weekly, minor and
-  patch updates grouped in one pull request, checked by CI.
+- Dependencies are updated by hand, `npm outdated` then `npm update`, before
+  each deploy, checked by CI like any other change. Dependabot version
+  updates (weekly pull requests) were tried and dropped on 2026-11-04: too
+  many pull requests for one person across two repositories. Only Dependabot
+  alerts stay on, a repository setting that flags a vulnerable dependency in
+  the Security tab without opening anything.
 - Request logging with `pino`: one line per request with a request id,
   `/health` left out, and passwords, cookies and authorization headers
   redacted wherever they would appear.
