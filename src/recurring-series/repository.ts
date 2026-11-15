@@ -188,6 +188,11 @@ export async function createSeries(
   return rows[0];
 }
 
+// A patch that sets end_date ends the series in the same statement: it
+// removes the unrealized jobs past the end and pulls generated_until back to
+// the end, so a later reopening resumes from there. One statement, so the
+// series is never left ended with its later jobs still there: when one of
+// them cannot be deleted (it has an invoice), nothing changes at all.
 export async function updateSeries(
   organizationId: string,
   id: string,
@@ -197,16 +202,35 @@ export async function updateSeries(
   if (set.values.length === 0) {
     return findSeries(organizationId, id);
   }
+  const values = [organizationId, id, ...set.values];
+
+  const ending = patch.endDate !== undefined && patch.endDate !== null;
+  let pullBack = "";
+  let trimmed = "";
+  if (ending) {
+    values.push(patch.endDate);
+    // The new end is a parameter: inside SET, end_date is still the old one.
+    pullBack = `generated_until = LEAST(generated_until, $${values.length}),`;
+    trimmed = `,
+     trimmed AS (
+       DELETE FROM jobs
+       USING updated
+       WHERE jobs.organization_id = updated.organization_id
+         AND jobs.recurring_series_id = updated.id
+         AND jobs.scheduled_date > updated.end_date
+         AND jobs.status IN ('scheduled', 'estimated')
+     )`;
+  }
 
   const { rows } = await pool.query<RecurringSeries>(
     `WITH updated AS (
        UPDATE recurring_series
-       SET ${set.assignments}, updated_at = now()
+       SET ${set.assignments}, ${pullBack} updated_at = now()
        WHERE organization_id = $1 AND id = $2
        RETURNING *
-     )
+     )${trimmed}
      SELECT ${columns} FROM updated s ${joins}`,
-    [organizationId, id, ...set.values],
+    values,
   );
   return rows[0];
 }
@@ -341,27 +365,26 @@ export async function propagateTemplate(
   return rowCount ?? 0;
 }
 
-// After end_date was set: removes the unrealized jobs past the end, and pulls
-// generated_until back to the end so a later reopening resumes from there.
-export async function trimAfterEnd(
+// True when ending the series on `endDate` would have to remove a job that
+// is already invoiced: an unrealized job after that date with an invoice.
+export async function hasInvoicedJobsAfter(
   organizationId: string,
   seriesId: string,
-): Promise<number> {
-  const { rowCount } = await pool.query(
-    `WITH ended AS (
-       UPDATE recurring_series
-       SET generated_until = LEAST(generated_until, end_date)
-       WHERE organization_id = $1 AND id = $2 AND end_date IS NOT NULL
-       RETURNING end_date
-     )
-     DELETE FROM jobs
-     USING ended
-     WHERE jobs.organization_id = $1 AND jobs.recurring_series_id = $2
-       AND jobs.scheduled_date > ended.end_date
-       AND jobs.status IN ('scheduled', 'estimated')`,
-    [organizationId, seriesId],
+  endDate: string,
+): Promise<boolean> {
+  const { rows } = await pool.query<{ exists: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1
+       FROM jobs j
+       JOIN invoices i
+         ON i.organization_id = j.organization_id AND i.job_id = j.id
+       WHERE j.organization_id = $1 AND j.recurring_series_id = $2
+         AND j.scheduled_date > $3
+         AND j.status IN ('scheduled', 'estimated')
+     ) AS exists`,
+    [organizationId, seriesId, endDate],
   );
-  return rowCount ?? 0;
+  return rows[0]?.exists ?? false;
 }
 
 // True once any job of the series was completed or cancelled.

@@ -474,6 +474,83 @@ describe("PATCH /recurring-series/:id", () => {
     ]);
   });
 
+  // A weekly series with its visit three weeks from now already invoiced.
+  async function createSeriesWithInvoicedVisit(): Promise<{
+    series: SeriesBody;
+    jobs: JobBody[];
+    invoicedDate: string;
+  }> {
+    const { id } = await createSeries({ everyWeeks: 1 });
+    const invoicedDate = addDays(today, 21);
+    const visit = (await jobsOf(id)).find(
+      (job) => job.scheduledDate === invoicedDate,
+    );
+    const invoice = await api.post("/invoices", { jobId: visit?.id });
+    expect(invoice.status).toBe(201);
+    // Read once everything is in place (listing the jobs generates a year
+    // ahead): the series and its jobs as the tests must find them again.
+    const series = await api.get<SeriesBody>(`/recurring-series/${id}`);
+    return { series: series.body, jobs: await jobsOf(id), invoicedDate };
+  }
+
+  it("answers 409 and changes nothing when a visit after the end is invoiced", async () => {
+    const { series, jobs } = await createSeriesWithInvoicedVisit();
+
+    const res = await api.patch(`/recurring-series/${series.id}`, {
+      endDate: addDays(today, 10),
+      notes: "Ending",
+    });
+
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({
+      error: {
+        code: "conflict",
+        message:
+          "Cannot end the series on that date: a later visit is already invoiced. Delete its invoice or choose a later endDate.",
+      },
+    });
+    expect((await api.get(`/recurring-series/${series.id}`)).body).toEqual(
+      series,
+    );
+    expect(await jobsOf(series.id)).toEqual(jobs);
+  });
+
+  it("ends the series on the day of the invoiced visit, which stays", async () => {
+    const { series, invoicedDate } = await createSeriesWithInvoicedVisit();
+
+    const res = await api.patch<SeriesBody>(`/recurring-series/${series.id}`, {
+      endDate: invoicedDate,
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      endDate: invoicedDate,
+      generatedUntil: invoicedDate,
+    });
+    expect((await jobsOf(series.id)).map((job) => job.scheduledDate)).toEqual([
+      today,
+      addDays(today, 7),
+      addDays(today, 14),
+      invoicedDate,
+    ]);
+  });
+
+  it("relies on the database to end the series and remove its visits together", async () => {
+    const { series, jobs } = await createSeriesWithInvoicedVisit();
+
+    // Straight to the statement, past the check the service makes first.
+    await expect(
+      repository.updateSeries(api.organizationId, series.id, {
+        endDate: addDays(today, 10),
+      }),
+    ).rejects.toMatchObject({ code: "23503" });
+
+    expect((await api.get(`/recurring-series/${series.id}`)).body).toEqual(
+      series,
+    );
+    expect(await jobsOf(series.id)).toEqual(jobs);
+  });
+
   it("resumes generating when the end is removed", async () => {
     const series = await createSeries({ everyWeeks: 1 });
     await api.patch(`/recurring-series/${series.id}`, {

@@ -68,6 +68,14 @@ export async function updateSeries(
         { path: "endDate", message: "Must not be before startDate" },
       ]);
     }
+    // Ending removes the visits after the end, and an invoiced visit is not
+    // removed. Checked here for the precise answer; the statement that ends
+    // the series fails as a whole if an invoice appears in between.
+    if (await series.hasInvoicedJobsAfter(organizationId, id, patch.endDate)) {
+      throw new ConflictError(
+        "Cannot end the series on that date: a later visit is already invoiced. Delete its invoice or choose a later endDate.",
+      );
+    }
   }
 
   const updated = await series.updateSeries(organizationId, id, patch);
@@ -82,13 +90,9 @@ export async function updateSeries(
     today,
     templateChanges(before, patch),
   );
-  if (patch.endDate !== undefined) {
-    if (patch.endDate === null) {
-      // Reopened: generation resumes after the old end.
-      await materialize(organizationId);
-    } else {
-      await series.trimAfterEnd(organizationId, id);
-    }
+  if (patch.endDate === null) {
+    // Reopened: generation resumes after the old end.
+    await materialize(organizationId);
   }
   return series.findSeries(organizationId, id);
 }
