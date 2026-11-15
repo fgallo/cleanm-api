@@ -105,6 +105,7 @@ function templateChanges(
     hourlyRateCents: before.hourlyRateCents,
     fixedPriceCents: before.fixedPriceCents,
     helperId: before.helper?.id ?? null,
+    helperHourlyRateCents: before.helperHourlyRateCents,
     notes: before.notes,
   };
   const changes: series.TemplateChange[] = [];
