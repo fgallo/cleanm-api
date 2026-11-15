@@ -30,7 +30,8 @@ type SeriesBody = {
   notes: string | null;
   property: { id: string };
   client: { id: string; name: string };
-  helper: { id: string; name: string } | null;
+  helper: { id: string; name: string; hourlyRateCents: number | null } | null;
+  helperHourlyRateCents: number | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -44,7 +45,8 @@ type JobBody = {
   hourlyRateCents: number;
   priceCents: number;
   notes: string | null;
-  helper: { id: string; name: string } | null;
+  helper: { id: string; name: string; hourlyRateCents: number | null } | null;
+  helperHourlyRateCents: number | null;
   recurringSeriesId: string | null;
 };
 
@@ -136,6 +138,22 @@ describe("POST /recurring-series", () => {
       helper: { id: helperId },
       recurringSeriesId: series.id,
     });
+  });
+
+  it("generates the visits with the series' own helper rate", async () => {
+    const helperId = await createHelper();
+
+    const series = await createSeries({
+      everyWeeks: 2,
+      helperId,
+      helperHourlyRateCents: 2500,
+    });
+
+    expect(series.helperHourlyRateCents).toBe(2500);
+    const jobs = await jobsUpTo(series.id, horizon);
+    expect(jobs.map((job) => job.helperHourlyRateCents)).toEqual([
+      2500, 2500, 2500, 2500, 2500,
+    ]);
   });
 
   it("generates monthly visits on the day of the month", async () => {
@@ -400,10 +418,43 @@ describe("PATCH /recurring-series/:id", () => {
     );
     const without = await jobsUpTo(series.id, horizon);
 
-    expect(assigned.body.helper).toEqual({ id: helperId, name: "Maria Silva" });
+    expect(assigned.body.helper).toEqual({
+      id: helperId,
+      name: "Maria Silva",
+      hourlyRateCents: null,
+    });
     expect(withHelper.every((job) => job.helper?.id === helperId)).toBe(true);
     expect(unassigned.body.helper).toBeNull();
     expect(without.every((job) => job.helper === null)).toBe(true);
+  });
+
+  it("changes the helper rate of the upcoming jobs that still match", async () => {
+    const helperId = await createHelper();
+    const series = await createSeries({
+      everyWeeks: 2,
+      helperId,
+      helperHourlyRateCents: 2500,
+    });
+    const [, second] = await jobsUpTo(series.id, horizon);
+    if (second === undefined) {
+      throw new Error("Expected generated jobs");
+    }
+    // One visit pays a rate of its own: it keeps it.
+    await api.patch(`/jobs/${second.id}`, { helperHourlyRateCents: 3000 });
+
+    const res = await api.patch<SeriesBody>(`/recurring-series/${series.id}`, {
+      helperHourlyRateCents: null,
+    });
+
+    expect(res.body.helperHourlyRateCents).toBeNull();
+    const jobs = await jobsUpTo(series.id, horizon);
+    expect(jobs.map((job) => job.helperHourlyRateCents)).toEqual([
+      null,
+      3000,
+      null,
+      null,
+      null,
+    ]);
   });
 
   it("ends the series and removes the unrealized visits after the end", async () => {
