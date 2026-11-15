@@ -114,10 +114,16 @@ more than one property.
    instant.
 5. Invoices have a sequential number per organization, assigned at creation
    (`organizations.next_invoice_number`); a deleted invoice leaves a gap, and
-   numbers are never reused. An invoice copies the pricing inputs of its job
-   and the tax of the organization when it is created, and keeps its own copy
-   from then on: the owner edits the invoice itself, and a later change to the
-   job or to the tax settings never changes it. A discount is an amount or a
+   numbers are never reused. An invoice copies what it prints when it is
+   created: the pricing inputs of its job, the tax of the organization (name,
+   rate, registration number), who it bills (the client and the property's
+   address, `bill_to_*`) and who issues it (the organization's details,
+   `issuer_*`). It keeps its own copy from then on: the owner edits the
+   invoice itself, and a later change to the job, the client, the property or
+   the organization never changes it. `POST /invoices/:id/refresh` copies who
+   it bills and who issues it again, on purpose, for an invoice issued with
+   something wrong in them; the logo is the one thing still read when the PDF
+   is rendered. A discount is an amount or a
    share of the subtotal (basis points), never both; the tax applies to the
    discounted subtotal. Subtotal, discount, tax and total are derived from
    those columns in the query, like a job's price. Tax is
@@ -131,11 +137,9 @@ more than one property.
    later (stated on 2026-11-14: invoices are fiscal documents, kept as they
    are for checking and accountability). A record that reads a value kept
    elsewhere takes its own copy before that value changes: an invoice copies
-   its job's pricing and the organization's tax when it is created (rule 5),
-   and when a helper's usual rate changes, their jobs before today that had
-   no rate of their own get the previous one written on them, in the same
-   statement. Not true yet for what an invoice prints about the client, the
-   property and the business: those are read when the invoice is shown.
+   everything it prints when it is created (rule 5), and when a helper's
+   usual rate changes, their jobs before today that had no rate of their own
+   get the previous one written on them, in the same statement.
 
 ## 5. Stack
 

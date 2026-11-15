@@ -121,6 +121,7 @@ JSON in and out, camelCase keys. Errors always look like
 | `GET /invoices/:id`                  |                                                     | `200` or `404`                              |
 | `GET /invoices/:id/pdf`              |                                                     | `200` PDF or `404`                          |
 | `PATCH /invoices/:id`                | any of the invoice fields, see below                | `200` or `404`                              |
+| `POST /invoices/:id/refresh`         |                                                     | `200` invoice or `404`                      |
 | `DELETE /invoices/:id`               |                                                     | `204`, `404` or `409`                       |
 | `POST /invoices/:invoiceId/payments` | `{ method, amountCents }`, see below                | `201` payment, `400` or `404`               |
 | `GET /payments/:id`                  |                                                     | `200` or `404`                              |
@@ -144,7 +145,8 @@ so the client and the API must share a site: another port of `localhost`
 works, and so do two subdomains of one domain.
 
 The organization is a single resource, the signed-in user's. Its settings
-are what invoices print and how they are computed: `name`, `timezone` (an
+are what an invoice copies when it is created, so a change here reaches the
+invoices issued from then on: `name`, `timezone` (an
 IANA name), the address (`addressLine1`, `addressLine2`, `city`, `province`,
 `postalCode`, `country`), `phone`, `email`, `website` (printed as it is, such
 as "www.example.com"), `paymentInstructions` (free text such as "Interac
@@ -256,11 +258,15 @@ curl -X POST localhost:3000/recurring-series \
 
 An invoice bills one visit. `POST /invoices` takes the `jobId` of a job that
 is `scheduled` or `completed` and not invoiced yet (`400` on the field when
-the job does not exist, `409` otherwise), and copies the job's pricing
-(`serviceDate`, `durationMinutes`, `hourlyRateCents`, `fixedPriceCents`) and
-the organization's tax (`taxName`, `taxRateBasisPoints`) into the invoice,
-which keeps its own copy from then on: editing the job or the tax settings
-later never changes an invoice. `number` is sequential per organization and
+the job does not exist, `409` otherwise), and copies into the invoice what it
+prints: the job's pricing (`serviceDate`, `durationMinutes`,
+`hourlyRateCents`, `fixedPriceCents`), the organization's tax (`taxName`,
+`taxRateBasisPoints`, `taxRegistrationNumber`), who it bills (`billTo`: the
+client's `name`, `email` and `phone` and the property's address) and who
+issues it (`issuer`: the organization's `name`, address, `phone`, `email`,
+`website` and `paymentInstructions`). The invoice keeps its own copy from
+then on: editing the job, the client, the property or the organization later
+never changes an invoice. `number` is sequential per organization and
 assigned at creation. Optional on creation: `issueDate` (default: today on
 the organization's calendar), `dueDate` (`null` means due on receipt),
 `description` (default: the kind of cleaning, such as "Regular cleaning"), a
@@ -276,16 +282,22 @@ The owner edits the invoice itself: `PATCH` takes `issueDate`, `dueDate`,
 `discountDescription` and `notes`, and the amounts follow; the tax is not
 editable. Setting one form of discount clears the other. `dueDate` must not
 be before `issueDate`, and a fixed discount must not exceed the subtotal
-(`400` on the field). The list takes an inclusive `issueDate` range, newest
-first, and every invoice comes with its `job`, `client`, `property` and
-`payments` embedded, plus `paidCents`, `amountDueCents` and `paid` derived
-from the payments. Deleting an invoice frees the job for a new one; the
-number is not reused. An invoice with payments cannot be deleted (`409`).
+(`400` on the field). `POST /invoices/:id/refresh` copies `billTo` and
+`issuer` again from the client, the property and the organization as they
+are now, for an invoice issued with something wrong or missing in them; the
+tax and the pricing stay as they were. The list takes an inclusive
+`issueDate` range, newest first, and every invoice comes with its `job`
+(`id`, `scheduledDate`, `status`) and `payments` embedded, `clientId` and
+`propertyId` to link to them, plus `paidCents`, `amountDueCents` and `paid`
+derived from the payments. Deleting an invoice frees the job for a new one;
+the number is not reused. An invoice with payments cannot be deleted (`409`).
 
 `GET /invoices/:id/pdf` renders the invoice as a PDF (`application/pdf`,
-shown inline), on request and never stored: it prints the invoice as it is
-now, with the organization's current details and logo, the discount with its
-label, the tax line when there is a tax, and the amount paid so far. The page
+shown inline), on request and never stored. It prints the invoice's own
+copy, so the same invoice gives the same page whatever was edited since
+(only the logo is the organization's current one): the business, who is
+billed, the discount with its label, the tax line when there is a tax, and
+the amount paid so far. The page
 is HTML and CSS in `src/invoices/pdf/template.ts`, rendered by Chromium
 through `puppeteer`, with the Inter font embedded; `npm run pdf:preview`
 writes a sample to `tmp/invoice-preview.html` and `.pdf` to adjust the
@@ -295,7 +307,7 @@ layout. Amounts print in Canadian dollars.
 curl -X POST localhost:3000/invoices \
   -H 'content-type: application/json' \
   -d '{"jobId":"'$JOB_ID'"}'
-# {"id":"...","number":1,"issueDate":"2026-10-16","dueDate":null,"description":"Regular cleaning","serviceDate":"2026-10-14","durationMinutes":150,"hourlyRateCents":4500,"fixedPriceCents":null,"subtotalCents":11250,"fixedDiscountCents":null,"discountBasisPoints":null,"discountCents":0,"discountDescription":null,"taxName":null,"taxRateBasisPoints":0,"taxCents":0,"totalCents":11250,"paidCents":0,"amountDueCents":11250,"paid":false,"payments":[],"notes":null,"job":{"id":"...","scheduledDate":"2026-10-14","status":"scheduled"},"client":{...},"property":{...},"createdAt":"...","updatedAt":"..."}
+# {"id":"...","number":1,"issueDate":"2026-10-16","dueDate":null,"description":"Regular cleaning","serviceDate":"2026-10-14","durationMinutes":150,"hourlyRateCents":4500,"fixedPriceCents":null,"subtotalCents":11250,"fixedDiscountCents":null,"discountBasisPoints":null,"discountCents":0,"discountDescription":null,"taxName":null,"taxRateBasisPoints":0,"taxRegistrationNumber":null,"taxCents":0,"totalCents":11250,"paidCents":0,"amountDueCents":11250,"paid":false,"payments":[],"notes":null,"billTo":{"name":"Jane Doe",...},"issuer":{"name":"Maple Leaf Cleaning",...},"job":{"id":"...","scheduledDate":"2026-10-14","status":"scheduled"},"clientId":"...","propertyId":"...","createdAt":"...","updatedAt":"..."}
 ```
 
 A payment is money received for an invoice: `method` (`e_transfer` or
