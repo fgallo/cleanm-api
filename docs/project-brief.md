@@ -68,7 +68,8 @@ multi-tenant signup and billing.
     field by field, only where the job still had the previous value, so
     hand-edited visits are kept.
   - The rule and the property never change: to change the rhythm, end the
-    series (`end_date`, which removes unrealized visits after it) and create
+    series (`end_date`, which removes unrealized visits after it in the same
+    statement, and is refused while one of them is invoiced) and create
     another. A series is deleted only while none of its visits happened.
 - Invoicing: one invoice per visit, generated before or after it (a job that
   is `scheduled` or `completed`). The owner sometimes edits an invoice's date,
@@ -117,7 +118,9 @@ more than one property.
    instant.
 5. Invoices have a sequential number per organization, assigned at creation
    (`organizations.next_invoice_number`); a deleted invoice leaves a gap, and
-   numbers are never reused. An invoice copies what it prints when it is
+   numbers are never reused: `organizations.last_invoice_number` keeps the
+   highest one ever issued, and a check constraint keeps the next number
+   above it. An invoice copies what it prints when it is
    created: the pricing inputs of its job, the tax of the organization (name,
    rate, registration number), who it bills (the client and the property's
    address, `bill_to_*`) and who issues it (the organization's details,
