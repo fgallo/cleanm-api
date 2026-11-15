@@ -35,6 +35,7 @@ type InvoiceBody = {
   paidCents: number;
   amountDueCents: number;
   paid: boolean;
+  locked: boolean;
   payments: Array<{
     id: string;
     paidOn: string;
@@ -412,9 +413,55 @@ describe("invoices and their payments", () => {
     expect((await api.delete(`/invoices/${invoice.id}`)).status).toBe(204);
   });
 
-  it("shows a negative amount due when the invoice is edited below what was paid", async () => {
+  it("shows a negative amount due when a partly paid invoice is edited below what was paid", async () => {
     const invoice = await createInvoice();
-    await createPayment(invoice.id, { amountCents: 11250 });
+    await createPayment(invoice.id, { amountCents: 6000 });
+
+    const res = await api.patch<InvoiceBody>(`/invoices/${invoice.id}`, {
+      fixedPriceCents: 5000,
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      totalCents: 5000,
+      paidCents: 6000,
+      amountDueCents: -1000,
+      paid: true,
+      locked: true,
+    });
+  });
+});
+
+describe("a paid invoice", () => {
+  const paidInvoice = {
+    error: { code: "conflict", message: "Cannot edit: the invoice is paid" },
+  };
+
+  it("is locked once the payments cover the total: no edit and no refresh", async () => {
+    const invoice = await createInvoice();
+    await createPayment(invoice.id, { amountCents: 5000 });
+    await createPayment(invoice.id, { amountCents: 6250 });
+    const paid = await getInvoice(invoice.id);
+
+    const edit = await api.patch(`/invoices/${invoice.id}`, {
+      fixedPriceCents: 10000,
+    });
+    const refresh = await api.post(
+      `/invoices/${invoice.id}/refresh`,
+      undefined,
+    );
+
+    expect(paid).toMatchObject({ paid: true, locked: true });
+    expect(edit.status).toBe(409);
+    expect(edit.body).toEqual(paidInvoice);
+    expect(refresh.status).toBe(409);
+    expect(refresh.body).toEqual(paidInvoice);
+    expect(await getInvoice(invoice.id)).toEqual(paid);
+  });
+
+  it("stays editable while it is only partly paid", async () => {
+    const invoice = await createInvoice();
+    await createPayment(invoice.id, { amountCents: 5000 });
 
     const res = await api.patch<InvoiceBody>(`/invoices/${invoice.id}`, {
       fixedPriceCents: 10000,
@@ -423,9 +470,48 @@ describe("invoices and their payments", () => {
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({
       totalCents: 10000,
-      paidCents: 11250,
-      amountDueCents: -1250,
-      paid: true,
+      amountDueCents: 5000,
+      paid: false,
+      locked: false,
     });
+  });
+
+  it("opens again when a payment is lowered or removed", async () => {
+    const invoice = await createInvoice();
+    const payment = await createPayment(invoice.id, { amountCents: 11250 });
+    const note = { notes: "Corrected" };
+    expect((await api.patch(`/invoices/${invoice.id}`, note)).status).toBe(409);
+
+    await api.patch(`/payments/${payment.id}`, { amountCents: 11000 });
+    expect((await api.patch(`/invoices/${invoice.id}`, note)).status).toBe(200);
+
+    await api.patch(`/payments/${payment.id}`, { amountCents: 11250 });
+    expect((await getInvoice(invoice.id)).locked).toBe(true);
+
+    await api.delete(`/payments/${payment.id}`);
+    const refresh = await api.post(
+      `/invoices/${invoice.id}/refresh`,
+      undefined,
+    );
+    expect(refresh.status).toBe(200);
+  });
+
+  it("is never locked when there is nothing to pay", async () => {
+    const invoice = await createInvoice();
+
+    const free = await api.patch<InvoiceBody>(`/invoices/${invoice.id}`, {
+      discountBasisPoints: 10000,
+    });
+    const again = await api.patch<InvoiceBody>(`/invoices/${invoice.id}`, {
+      discountBasisPoints: 1000,
+    });
+
+    expect(free.body).toMatchObject({
+      totalCents: 0,
+      paid: true,
+      locked: false,
+    });
+    expect(again.status).toBe(200);
+    expect(again.body).toMatchObject({ totalCents: 10125, locked: false });
   });
 });
