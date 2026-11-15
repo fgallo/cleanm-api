@@ -1,20 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import type { OrganizationSettings } from "../../organizations/repository.ts";
 import type { Invoice } from "../repository.ts";
-import { sampleInvoice, sampleOrganization } from "./sample.ts";
+import { sampleInvoice } from "./sample.ts";
 import { escape, formatDate, formatMoney, invoiceHtml } from "./template.ts";
 
 // The page is checked as text: what it prints, and what it leaves out.
 // Rendering to PDF is covered by the endpoint test.
 
-function page(
-  changes: Partial<Invoice> = {},
-  settings: Partial<OrganizationSettings> = {},
-): string {
+function page(changes: Partial<Invoice> = {}): string {
   return invoiceHtml({
     invoice: { ...sampleInvoice, ...changes },
-    organization: { ...sampleOrganization, ...settings },
     logo: undefined,
   });
 }
@@ -83,22 +78,20 @@ describe("invoiceHtml", () => {
   });
 
   it("prints the due date, the discount with its label, the tax and the payments", () => {
-    const html = page(
-      {
-        dueDate: "2026-10-17",
-        discountBasisPoints: 1500,
-        discountCents: 1688,
-        discountDescription: "Referral for 1 cleaning",
-        taxName: "HST",
-        taxRateBasisPoints: 1300,
-        taxCents: 1243,
-        totalCents: 10805,
-        paidCents: 5000,
-        amountDueCents: 5805,
-        notes: "Thank you!",
-      },
-      { taxName: "HST", taxRegistrationNumber: "123456789 RT0001" },
-    );
+    const html = page({
+      dueDate: "2026-10-17",
+      discountBasisPoints: 1500,
+      discountCents: 1688,
+      discountDescription: "Referral for 1 cleaning",
+      taxName: "HST",
+      taxRateBasisPoints: 1300,
+      taxRegistrationNumber: "123456789 RT0001",
+      taxCents: 1243,
+      totalCents: 10805,
+      paidCents: 5000,
+      amountDueCents: 5805,
+      notes: "Thank you!",
+    });
 
     for (const text of [
       "October 17, 2026",
@@ -126,7 +119,6 @@ describe("invoiceHtml", () => {
   it("embeds the logo when there is one", () => {
     const html = invoiceHtml({
       invoice: sampleInvoice,
-      organization: sampleOrganization,
       logo: { content: Buffer.from("png-bytes"), contentType: "image/png" },
     });
 
@@ -136,8 +128,15 @@ describe("invoiceHtml", () => {
   });
 
   it("leaves out the notes block when there is nothing to print", () => {
-    const html = page({ notes: null }, { paymentInstructions: null });
+    const html = page({
+      notes: null,
+      issuer: { ...sampleInvoice.issuer, paymentInstructions: null },
+    });
 
     expect(html).not.toContain("Notes / Terms");
+  });
+
+  it("prints no registration number for an invoice issued without one", () => {
+    expect(page()).not.toContain(" No. ");
   });
 });

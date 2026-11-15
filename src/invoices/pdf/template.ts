@@ -4,10 +4,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import type {
-  Logo,
-  OrganizationSettings,
-} from "../../organizations/repository.ts";
+import type { Logo } from "../../organizations/repository.ts";
 import type { Invoice } from "../repository.ts";
 
 // One business, in Canada: the organization has no currency or locale yet.
@@ -36,17 +33,15 @@ export function formatDate(date: string): string {
   return longDate.format(new Date(`${date}T00:00:00Z`));
 }
 
+// The invoice brings everything the page prints, the business included
+// (`issuer`); the logo is the one thing read from the organization.
 export type InvoicePage = {
   invoice: Invoice;
-  organization: OrganizationSettings;
   logo: Logo | undefined;
 };
 
-export function invoiceHtml({
-  invoice,
-  organization,
-  logo,
-}: InvoicePage): string {
+export function invoiceHtml({ invoice, logo }: InvoicePage): string {
+  const { billTo, issuer } = invoice;
   const hourly = invoice.fixedPriceCents === null;
   const line = {
     quantity: hourly ? quantity.format(invoice.durationMinutes / 60) : "1",
@@ -122,20 +117,18 @@ export function invoiceHtml({
     <div>${logo === undefined ? "" : `<img class="logo" src="${dataUrl(logo)}" alt="">`}</div>
     <div class="right">
       <h1>INVOICE</h1>
-      <div class="strong">${escape(organization.name)}</div>
+      <div class="strong">${escape(issuer.name)}</div>
       ${lines([
-        organization.addressLine1,
-        organization.addressLine2,
-        joinPresent([organization.city, organization.province], ", ") +
-          (organization.postalCode === null
-            ? ""
-            : ` ${organization.postalCode}`),
-        organization.phone,
-        organization.email,
-        organization.website,
-        organization.taxRegistrationNumber === null
+        issuer.addressLine1,
+        issuer.addressLine2,
+        joinPresent([issuer.city, issuer.province], ", ") +
+          (issuer.postalCode === null ? "" : ` ${issuer.postalCode}`),
+        issuer.phone,
+        issuer.email,
+        issuer.website,
+        invoice.taxRegistrationNumber === null
           ? null
-          : `${organization.taxName ?? "Tax"} No. ${organization.taxRegistrationNumber}`,
+          : `${invoice.taxName ?? "Tax"} No. ${invoice.taxRegistrationNumber}`,
       ])}
     </div>
   </div>
@@ -143,12 +136,12 @@ export function invoiceHtml({
   <div class="row parties">
     <div>
       <div class="label">Bill to</div>
-      <div class="strong">${escape(invoice.client.name)}</div>
+      <div class="strong">${escape(billTo.name)}</div>
       ${lines([
-        invoice.property.addressLine1,
-        invoice.property.addressLine2,
-        `${invoice.property.city}, ${invoice.property.province} ${invoice.property.postalCode}`,
-        invoice.client.email,
+        billTo.addressLine1,
+        billTo.addressLine2,
+        `${billTo.city}, ${billTo.province} ${billTo.postalCode}`,
+        billTo.email,
       ])}
     </div>
     <table class="facts">
@@ -202,11 +195,11 @@ export function invoiceHtml({
   </table>
 
   ${
-    invoice.notes === null && organization.paymentInstructions === null
+    invoice.notes === null && issuer.paymentInstructions === null
       ? ""
       : `<div class="notes">
     <h2>Notes / Terms</h2>
-    ${lines([invoice.notes, organization.paymentInstructions])}
+    ${lines([invoice.notes, issuer.paymentInstructions])}
   </div>`
   }
 </body>

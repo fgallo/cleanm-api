@@ -5,7 +5,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { closeBrowser, launchBrowser, renderPdf } from "./render.ts";
-import { sampleInvoice, sampleOrganization } from "./sample.ts";
+import { sampleInvoice } from "./sample.ts";
 import { invoiceHtml } from "./template.ts";
 
 const outDir = path.resolve(import.meta.dirname, "../../../tmp");
@@ -40,7 +40,6 @@ const html = invoiceHtml({
     amountDueCents: 9562,
     notes: "Thank you for your business.",
   },
-  organization: sampleOrganization,
   logo: { content: await sampleLogo(), contentType: "image/png" },
 });
 

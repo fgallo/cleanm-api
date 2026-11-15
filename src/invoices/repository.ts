@@ -32,6 +32,7 @@ export type Invoice = {
   // applies to the discounted subtotal.
   taxName: string | null;
   taxRateBasisPoints: number;
+  taxRegistrationNumber: string | null;
   taxCents: number;
   totalCents: number;
   // Derived from the payments: an invoice is paid once they cover the total
@@ -48,15 +49,14 @@ export type Invoice = {
     notes: string | null;
   }>;
   notes: string | null;
-  job: { id: string; scheduledDate: string; status: JobStatus };
-  client: {
-    id: string;
+  // Who the invoice bills and who issues it, as it prints them: copied from
+  // the client, the property and the organization when the invoice was
+  // created, and again only when asked (refreshInvoice). Editing any of the
+  // three later does not change an invoice.
+  billTo: {
     name: string;
     email: string | null;
     phone: string | null;
-  };
-  property: {
-    id: string;
     addressLine1: string;
     addressLine2: string | null;
     city: string;
@@ -64,6 +64,24 @@ export type Invoice = {
     postalCode: string;
     country: string;
   };
+  issuer: {
+    name: string;
+    addressLine1: string | null;
+    addressLine2: string | null;
+    city: string | null;
+    province: string | null;
+    postalCode: string | null;
+    country: string;
+    phone: string | null;
+    email: string | null;
+    website: string | null;
+    paymentInstructions: string | null;
+  };
+  // The visit, its client and its property as they are now, to link to
+  // them. What the invoice prints about them is in billTo.
+  job: { id: string; scheduledDate: string; status: JobStatus };
+  clientId: string;
+  propertyId: string;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -109,8 +127,59 @@ const patchableColumns: Record<keyof InvoicePatch, string> = {
   notes: "notes",
 };
 
-// Every read joins the job, its property and its client: the invoice prints
-// them, and the invoices list shows the client with each row.
+// What an invoice copies about who it bills and who issues it: each invoice
+// column and where its value is read (c is the client, p the property, o the
+// organization). One list for creating an invoice and for refreshing one, so
+// the two cannot drift apart.
+const billToSources = {
+  bill_to_name: "c.name",
+  bill_to_email: "c.email",
+  bill_to_phone: "c.phone",
+  bill_to_address_line1: "p.address_line1",
+  bill_to_address_line2: "p.address_line2",
+  bill_to_city: "p.city",
+  bill_to_province: "p.province",
+  bill_to_postal_code: "p.postal_code",
+  bill_to_country: "p.country",
+};
+
+const issuerSources = {
+  issuer_name: "o.name",
+  issuer_address_line1: "o.address_line1",
+  issuer_address_line2: "o.address_line2",
+  issuer_city: "o.city",
+  issuer_province: "o.province",
+  issuer_postal_code: "o.postal_code",
+  issuer_country: "o.country",
+  issuer_phone: "o.phone",
+  issuer_email: "o.email",
+  issuer_website: "o.website",
+  issuer_payment_instructions: "o.payment_instructions",
+};
+
+type Sources = Record<string, string>;
+
+// "c.name AS bill_to_name, ...": the copied values under the invoice's names.
+const selectAs = (sources: Sources) =>
+  Object.entries(sources)
+    .map(([column, source]) => `${source} AS ${column}`)
+    .join(", ");
+
+// "bill_to_name, ...", optionally read from a table: "job.bill_to_name, ...".
+const names = (sources: Sources, prefix = "") =>
+  Object.keys(sources)
+    .map((column) => `${prefix}${column}`)
+    .join(", ");
+
+// "bill_to_name = c.name, ...", for an UPDATE.
+const assignments = (sources: Sources) =>
+  Object.entries(sources)
+    .map(([column, source]) => `${column} = ${source}`)
+    .join(", ");
+
+// Every read joins the job and its property, for the state of the visit and
+// the ids to link to. Who the invoice bills and who issues it come from the
+// invoice's own columns.
 const columns = `
   i.id,
   i.number,
@@ -128,6 +197,7 @@ const columns = `
   i.discount_description AS "discountDescription",
   i.tax_name AS "taxName",
   i.tax_rate_basis_points AS "taxRateBasisPoints",
+  i.tax_registration_number AS "taxRegistrationNumber",
   amounts.tax_cents AS "taxCents",
   total.total_cents AS "totalCents",
   paid.paid_cents AS "paidCents",
@@ -136,25 +206,36 @@ const columns = `
   paid.payments,
   i.notes,
   json_build_object(
+    'name', i.bill_to_name,
+    'email', i.bill_to_email,
+    'phone', i.bill_to_phone,
+    'addressLine1', i.bill_to_address_line1,
+    'addressLine2', i.bill_to_address_line2,
+    'city', i.bill_to_city,
+    'province', i.bill_to_province,
+    'postalCode', i.bill_to_postal_code,
+    'country', i.bill_to_country
+  ) AS "billTo",
+  json_build_object(
+    'name', i.issuer_name,
+    'addressLine1', i.issuer_address_line1,
+    'addressLine2', i.issuer_address_line2,
+    'city', i.issuer_city,
+    'province', i.issuer_province,
+    'postalCode', i.issuer_postal_code,
+    'country', i.issuer_country,
+    'phone', i.issuer_phone,
+    'email', i.issuer_email,
+    'website', i.issuer_website,
+    'paymentInstructions', i.issuer_payment_instructions
+  ) AS issuer,
+  json_build_object(
     'id', j.id,
     'scheduledDate', j.scheduled_date,
     'status', j.status
   ) AS job,
-  json_build_object(
-    'id', c.id,
-    'name', c.name,
-    'email', c.email,
-    'phone', c.phone
-  ) AS client,
-  json_build_object(
-    'id', p.id,
-    'addressLine1', p.address_line1,
-    'addressLine2', p.address_line2,
-    'city', p.city,
-    'province', p.province,
-    'postalCode', p.postal_code,
-    'country', p.country
-  ) AS property,
+  p.client_id AS "clientId",
+  p.id AS "propertyId",
   i.created_at AS "createdAt",
   i.updated_at AS "updatedAt"
 `;
@@ -218,8 +299,6 @@ const joins = `
     ON j.organization_id = i.organization_id AND j.id = i.job_id
   JOIN properties p
     ON p.organization_id = j.organization_id AND p.id = j.property_id
-  JOIN clients c
-    ON c.organization_id = p.organization_id AND c.id = p.client_id
   ${amountJoins}
 `;
 
@@ -248,12 +327,14 @@ export async function findInvoice(
   return rows[0];
 }
 
-// One statement takes the next number, copies the job and the organization's
-// tax, and inserts the invoice. The number is only taken when the job CTE
-// finds an invoiceable job (the UPDATE joins it), so a request that fails
-// consumes nothing. Returns undefined when the job does not exist, cannot be
-// invoiced, or was invoiced by a concurrent request: the route checks the job
-// first for precise errors, and the unique constraint is the guarantee.
+// One statement takes the next number, copies what the invoice keeps (the
+// job's pricing, its client and property as billTo, the organization's tax
+// and details as issuer), and inserts the invoice. The number is only taken
+// when the job CTE finds an invoiceable job (the UPDATE joins it), so a
+// request that fails consumes nothing. Returns undefined when the job does
+// not exist, cannot be invoiced, or was invoiced by a concurrent request: the
+// route checks the job first for precise errors, and the unique constraint
+// is the guarantee.
 export async function createInvoice(
   organizationId: string,
   input: NewInvoice,
@@ -261,11 +342,16 @@ export async function createInvoice(
   try {
     const { rows } = await pool.query<Invoice>(
       `WITH job AS (
-         SELECT id, organization_id, scheduled_date, duration_minutes,
-                hourly_rate_cents, fixed_price_cents
-         FROM jobs
-         WHERE organization_id = $1 AND id = $2
-           AND status IN ('scheduled', 'completed')
+         SELECT j.id, j.organization_id, j.scheduled_date,
+                j.duration_minutes, j.hourly_rate_cents, j.fixed_price_cents,
+                ${selectAs(billToSources)}
+         FROM jobs j
+         JOIN properties p
+           ON p.organization_id = j.organization_id AND p.id = j.property_id
+         JOIN clients c
+           ON c.organization_id = p.organization_id AND c.id = p.client_id
+         WHERE j.organization_id = $1 AND j.id = $2
+           AND j.status IN ('scheduled', 'completed')
        ),
        numbered AS (
          UPDATE organizations o
@@ -273,19 +359,26 @@ export async function createInvoice(
          FROM job
          WHERE o.id = job.organization_id
          RETURNING o.next_invoice_number - 1 AS number, o.tax_name,
-                   o.tax_rate_basis_points
+                   o.tax_rate_basis_points, o.tax_registration_number,
+                   ${selectAs(issuerSources)}
        ),
        inserted AS (
          INSERT INTO invoices (
            organization_id, job_id, number, issue_date, due_date,
            description, service_date, duration_minutes, hourly_rate_cents,
            fixed_price_cents, fixed_discount_cents, discount_basis_points,
-           discount_description, tax_name, tax_rate_basis_points, notes
+           discount_description, tax_name, tax_rate_basis_points,
+           tax_registration_number, notes,
+           ${names(billToSources)},
+           ${names(issuerSources)}
          )
          SELECT job.organization_id, job.id, numbered.number, $3, $4, $5,
                 job.scheduled_date, job.duration_minutes,
                 job.hourly_rate_cents, job.fixed_price_cents, $6, $7, $8,
-                numbered.tax_name, numbered.tax_rate_basis_points, $9
+                numbered.tax_name, numbered.tax_rate_basis_points,
+                numbered.tax_registration_number, $9,
+                ${names(billToSources, "job.")},
+                ${names(issuerSources, "numbered.")}
          FROM job, numbered
          RETURNING *
        )
@@ -333,6 +426,36 @@ export async function updateInvoice(
      )
      SELECT ${columns} FROM updated i ${joins}`,
     [organizationId, id, ...set.values],
+  );
+  return rows[0];
+}
+
+// Copies the client's, the property's and the organization's details into
+// the invoice again, as they are now: for an invoice issued with something
+// wrong or missing in them. The tax, registration number included, stays as
+// it was when the invoice was created.
+export async function refreshInvoice(
+  organizationId: string,
+  id: string,
+): Promise<Invoice | undefined> {
+  const { rows } = await pool.query<Invoice>(
+    `WITH updated AS (
+       UPDATE invoices i
+       SET ${assignments(billToSources)},
+           ${assignments(issuerSources)},
+           updated_at = now()
+       FROM jobs j
+       JOIN properties p
+         ON p.organization_id = j.organization_id AND p.id = j.property_id
+       JOIN clients c
+         ON c.organization_id = p.organization_id AND c.id = p.client_id
+       JOIN organizations o ON o.id = j.organization_id
+       WHERE i.organization_id = $1 AND i.id = $2
+         AND j.organization_id = i.organization_id AND j.id = i.job_id
+       RETURNING i.*
+     )
+     SELECT ${columns} FROM updated i ${joins}`,
+    [organizationId, id],
   );
   return rows[0];
 }
