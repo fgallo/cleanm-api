@@ -18,6 +18,9 @@ export const jobTemplate = {
   fixedPriceCents: cents.nullable().optional(),
   // null means nobody is assigned yet.
   helperId: z.uuid().nullable().optional(),
+  // What the helper is paid for an hour of this job when it is not their
+  // usual rate; null means the usual rate.
+  helperHourlyRateCents: cents.nullable().optional(),
   notes: notes.optional(),
 };
 

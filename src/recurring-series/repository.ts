@@ -29,7 +29,11 @@ export type RecurringSeries = {
     notes: string | null;
   };
   client: { id: string; name: string };
-  helper: { id: string; name: string } | null;
+  // hourlyRateCents is the helper's usual rate (see Job).
+  helper: { id: string; name: string; hourlyRateCents: number | null } | null;
+  // The rate the generated jobs pay their helper when it is not the usual
+  // one.
+  helperHourlyRateCents: number | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -41,6 +45,7 @@ export type JobTemplate = {
   hourlyRateCents: number;
   fixedPriceCents?: number | null;
   helperId?: string | null;
+  helperHourlyRateCents?: number | null;
   notes?: string | null;
 };
 
@@ -65,6 +70,7 @@ export const templateColumns: Record<keyof JobTemplate, string> = {
   hourlyRateCents: "hourly_rate_cents",
   fixedPriceCents: "fixed_price_cents",
   helperId: "helper_id",
+  helperHourlyRateCents: "helper_hourly_rate_cents",
   notes: "notes",
 };
 
@@ -98,8 +104,13 @@ const columns = `
   ) AS property,
   json_build_object('id', c.id, 'name', c.name) AS client,
   CASE WHEN h.id IS NULL THEN NULL
-       ELSE json_build_object('id', h.id, 'name', h.name)
+       ELSE json_build_object(
+         'id', h.id,
+         'name', h.name,
+         'hourlyRateCents', h.hourly_rate_cents
+       )
   END AS helper,
+  s.helper_hourly_rate_cents AS "helperHourlyRateCents",
   s.created_at AS "createdAt",
   s.updated_at AS "updatedAt"
 `;
@@ -147,10 +158,11 @@ export async function createSeries(
        INSERT INTO recurring_series (
          organization_id, property_id, every_weeks, day_of_month, start_date,
          end_date, start_time, duration_minutes, service_type,
-         hourly_rate_cents, fixed_price_cents, helper_id, notes
+         hourly_rate_cents, fixed_price_cents, helper_id,
+         helper_hourly_rate_cents, notes
        )
        SELECT organization_id, id, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-              $13
+              $13, $14
        FROM properties
        WHERE organization_id = $1 AND id = $2
        RETURNING *
@@ -169,6 +181,7 @@ export async function createSeries(
       input.hourlyRateCents,
       input.fixedPriceCents ?? null,
       input.helperId ?? null,
+      input.helperHourlyRateCents ?? null,
       input.notes ?? null,
     ],
   );
@@ -268,13 +281,14 @@ export async function generateJobs(
        RETURNING *
      )
      INSERT INTO jobs (
-       organization_id, property_id, helper_id, recurring_series_id,
-       scheduled_date, start_time, duration_minutes, service_type,
-       hourly_rate_cents, fixed_price_cents, notes
+       organization_id, property_id, helper_id, helper_hourly_rate_cents,
+       recurring_series_id, scheduled_date, start_time, duration_minutes,
+       service_type, hourly_rate_cents, fixed_price_cents, notes
      )
-     SELECT s.organization_id, s.property_id, s.helper_id, s.id, d.date,
-            s.start_time, s.duration_minutes, s.service_type,
-            s.hourly_rate_cents, s.fixed_price_cents, s.notes
+     SELECT s.organization_id, s.property_id, s.helper_id,
+            s.helper_hourly_rate_cents, s.id, d.date, s.start_time,
+            s.duration_minutes, s.service_type, s.hourly_rate_cents,
+            s.fixed_price_cents, s.notes
      FROM claimed s, unnest($5::date[]) AS d(date)`,
     [organizationId, seriesId, seenGeneratedUntil, until, dates],
   );
