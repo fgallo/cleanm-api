@@ -35,10 +35,20 @@ export type SampleDataSummary = {
 // --- The data ---------------------------------------------------------------
 
 const sampleHelpers = [
-  { name: "Carla Mendes", phone: "416-555-0101", active: true },
-  { name: "Diego Alves", phone: "416-555-0102", active: true },
+  {
+    name: "Carla Mendes",
+    phone: "416-555-0101",
+    hourlyRateCents: 2200,
+    active: true,
+  },
+  {
+    name: "Diego Alves",
+    phone: "416-555-0102",
+    hourlyRateCents: 2000,
+    active: true,
+  },
   // Left last month: still on the past visits, not offered for new ones.
-  { name: "Fatima Noor", phone: null, active: false },
+  { name: "Fatima Noor", phone: null, hourlyRateCents: 1900, active: false },
 ] as const;
 
 type HelperName = (typeof sampleHelpers)[number]["name"];
