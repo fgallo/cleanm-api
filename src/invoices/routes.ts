@@ -11,7 +11,7 @@ import { defaultDescription } from "./description.ts";
 import { renderPdf } from "./pdf/render.ts";
 import { invoiceHtml } from "./pdf/template.ts";
 import * as invoices from "./repository.ts";
-import type { InvoicePatch } from "./repository.ts";
+import type { Invoice, InvoicePatch } from "./repository.ts";
 import {
   createInvoiceSchema,
   invoiceIdSchema,
@@ -96,9 +96,10 @@ invoicesRouter.get("/:id/pdf", async (req, res) => {
     .send(pdf);
 });
 
-// The rules that span fields (dueDate against issueDate, a fixed discount
-// against the subtotal) are checked on the invoice as it will be after the
-// patch, since a patch may bring only some of the fields involved.
+// The owner edits the invoice itself, until it is paid in full. The rules
+// that span fields (dueDate against issueDate, a fixed discount against the
+// subtotal) are checked on the invoice as it will be after the patch, since
+// a patch may bring only some of the fields involved.
 invoicesRouter.patch("/:id", async (req, res) => {
   const { id } = invoiceIdSchema.parse(req.params);
   const patch = withOneDiscountForm(updateInvoiceSchema.parse(req.body));
@@ -106,6 +107,7 @@ invoicesRouter.patch("/:id", async (req, res) => {
   if (current === undefined) {
     throw new NotFoundError("Invoice not found");
   }
+  assertEditable(current);
   const after = { ...current, ...patch };
   assertDueDate(after.issueDate, after.dueDate);
   assertDiscount(after.fixedDiscountCents, subtotalOf(after));
@@ -123,9 +125,16 @@ invoicesRouter.patch("/:id", async (req, res) => {
 
 // An invoice does not follow the client, the property or the organization
 // when they are edited. This is the way to bring their current details into
-// one invoice on purpose, such as after fixing a misspelled name.
+// one invoice on purpose, such as after fixing a misspelled name. It is an
+// edit like any other: not on an invoice paid in full.
 invoicesRouter.post("/:id/refresh", async (req, res) => {
   const { id } = invoiceIdSchema.parse(req.params);
+  const current = await invoices.findInvoice(res.locals.organizationId, id);
+  if (current === undefined) {
+    throw new NotFoundError("Invoice not found");
+  }
+  assertEditable(current);
+
   const invoice = await invoices.refreshInvoice(res.locals.organizationId, id);
   if (invoice === undefined) {
     throw new NotFoundError("Invoice not found");
@@ -142,6 +151,15 @@ invoicesRouter.delete("/:id", async (req, res) => {
   }
   res.status(204).end();
 });
+
+// An invoice paid in full is a closed document: what was charged and what
+// was received stay as they are. The payments remain editable, and changing
+// them is the deliberate way to open the invoice again.
+function assertEditable(invoice: Invoice): void {
+  if (invoice.locked) {
+    throw new ConflictError("Cannot edit: the invoice is paid");
+  }
+}
 
 function assertDueDate(issueDate: string, dueDate: string | null): void {
   if (dueDate !== null && dueDate < issueDate) {

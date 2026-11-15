@@ -41,6 +41,11 @@ export type Invoice = {
   paidCents: number;
   amountDueCents: number;
   paid: boolean;
+  // True once someone paid the invoice in full: it has payments and they
+  // cover the total. A locked invoice is no longer edited or refreshed (the
+  // routes answer 409) until its payments change. An invoice with nothing to
+  // pay is paid without ever being locked.
+  locked: boolean;
   payments: Array<{
     id: string;
     paidOn: string; // YYYY-MM-DD
@@ -203,6 +208,7 @@ const columns = `
   paid.paid_cents AS "paidCents",
   total.total_cents - paid.paid_cents AS "amountDueCents",
   paid.paid_cents >= total.total_cents AS paid,
+  (paid.paid_cents > 0 AND paid.paid_cents >= total.total_cents) AS locked,
   paid.payments,
   i.notes,
   json_build_object(
