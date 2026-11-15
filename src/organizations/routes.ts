@@ -5,7 +5,6 @@ import {
   UnsupportedMediaTypeError,
   ValidationError,
 } from "../http/errors.ts";
-import * as invoices from "../invoices/repository.ts";
 import * as organizations from "./repository.ts";
 import { logoContentTypes } from "./repository.ts";
 import type { LogoContentType } from "./repository.ts";
@@ -18,17 +17,21 @@ organizationRouter.get("/", async (_req, res) => {
   res.json(await organizations.findOrganization(res.locals.organizationId));
 });
 
-// The next invoice number can only move past the numbers already used, or
-// the next invoice would collide with an existing one.
+// The next invoice number stays above every number ever issued, including
+// those of invoices deleted since: a number is never used twice. It may
+// still come down to just above the last one, to undo a number typed too
+// high. The database checks the same, whatever the path.
 organizationRouter.patch("/", async (req, res) => {
   const patch = updateOrganizationSchema.parse(req.body);
   if (patch.nextInvoiceNumber !== undefined) {
-    const highest = await invoices.highestNumber(res.locals.organizationId);
-    if (highest !== null && patch.nextInvoiceNumber <= highest) {
+    const { lastInvoiceNumber } = await organizations.findOrganization(
+      res.locals.organizationId,
+    );
+    if (patch.nextInvoiceNumber <= lastInvoiceNumber) {
       throw new ValidationError([
         {
           path: "nextInvoiceNumber",
-          message: `Must be greater than ${highest}, the highest invoice number`,
+          message: `Must be greater than ${lastInvoiceNumber}, the last invoice number issued`,
         },
       ]);
     }

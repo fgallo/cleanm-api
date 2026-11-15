@@ -6,6 +6,7 @@ import {
   createUser,
   startApi,
 } from "../../test/api.ts";
+import * as organizations from "./repository.ts";
 
 const api = await startApi();
 // For the raw requests below, which the JSON helpers of test/api.ts cannot
@@ -14,6 +15,7 @@ const cookie = await createSessionCookie(api.user);
 
 type Settings = {
   nextInvoiceNumber: number;
+  lastInvoiceNumber: number;
   hasLogo: boolean;
   updatedAt: string;
 };
@@ -41,6 +43,7 @@ describe("GET /organization", () => {
       taxRateBasisPoints: 0,
       taxRegistrationNumber: null,
       nextInvoiceNumber: expect.any(Number),
+      lastInvoiceNumber: expect.any(Number),
       hasLogo: false,
       createdAt: expect.any(String),
       updatedAt: expect.any(String),
@@ -144,7 +147,7 @@ describe("PATCH /organization", () => {
 });
 
 describe("next invoice number", () => {
-  async function createInvoice(): Promise<{ number: number }> {
+  async function createInvoice(): Promise<{ id: string; number: number }> {
     const client = await api.post<{ id: string }>("/clients", {
       name: "Jane Doe",
     });
@@ -165,9 +168,12 @@ describe("next invoice number", () => {
       serviceType: "regular",
       hourlyRateCents: 4500,
     });
-    const invoice = await api.post<{ number: number }>("/invoices", {
-      jobId: job.body.id,
-    });
+    const invoice = await api.post<{ id: string; number: number }>(
+      "/invoices",
+      {
+        jobId: job.body.id,
+      },
+    );
     expect(invoice.status).toBe(201);
     return invoice.body;
   }
@@ -206,7 +212,7 @@ describe("next invoice number", () => {
           issues: [
             {
               path: "nextInvoiceNumber",
-              message: `Must be greater than ${number}, the highest invoice number`,
+              message: `Must be greater than ${number}, the last invoice number issued`,
             },
           ],
         },
@@ -216,6 +222,53 @@ describe("next invoice number", () => {
       (await api.patch("/organization", { nextInvoiceNumber: number + 1 }))
         .status,
     ).toBe(200);
+  });
+
+  it("does not give out again the number of a deleted invoice", async () => {
+    const { id, number } = await createInvoice();
+    expect((await api.delete(`/invoices/${id}`)).status).toBe(204);
+
+    const back = await api.patch("/organization", {
+      nextInvoiceNumber: number,
+    });
+
+    expect(back.status).toBe(400);
+    expect(back.body).toMatchObject({
+      error: { issues: [{ path: "nextInvoiceNumber" }] },
+    });
+    expect((await api.get<Settings>("/organization")).body).toMatchObject({
+      nextInvoiceNumber: number + 1,
+      lastInvoiceNumber: number,
+    });
+    expect((await createInvoice()).number).toBe(number + 1);
+  });
+
+  it("lets a number typed too high come back down while no invoice used it", async () => {
+    const { number } = await createInvoice();
+    await api.patch("/organization", { nextInvoiceNumber: number + 1000 });
+
+    const res = await api.patch<Settings>("/organization", {
+      nextInvoiceNumber: number + 1,
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      nextInvoiceNumber: number + 1,
+      lastInvoiceNumber: number,
+    });
+    expect((await createInvoice()).number).toBe(number + 1);
+  });
+
+  it("relies on the database to keep the next number above the last one issued", async () => {
+    const { number } = await createInvoice();
+
+    await expect(
+      organizations.updateOrganization(api.organizationId, {
+        nextInvoiceNumber: number,
+      }),
+    ).rejects.toMatchObject({
+      constraint: "organizations_invoice_number_not_reused",
+    });
   });
 });
 

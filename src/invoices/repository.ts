@@ -333,7 +333,9 @@ export async function findInvoice(
   return rows[0];
 }
 
-// One statement takes the next number, copies what the invoice keeps (the
+// One statement takes the next number, records it as the last one issued
+// (it stays used even if this invoice is deleted), copies what the invoice
+// keeps (the
 // job's pricing, its client and property as billTo, the organization's tax
 // and details as issuer), and inserts the invoice. The number is only taken
 // when the job CTE finds an invoiceable job (the UPDATE joins it), so a
@@ -361,7 +363,8 @@ export async function createInvoice(
        ),
        numbered AS (
          UPDATE organizations o
-         SET next_invoice_number = o.next_invoice_number + 1
+         SET next_invoice_number = o.next_invoice_number + 1,
+             last_invoice_number = o.next_invoice_number
          FROM job
          WHERE o.id = job.organization_id
          RETURNING o.next_invoice_number - 1 AS number, o.tax_name,
@@ -464,18 +467,6 @@ export async function refreshInvoice(
     [organizationId, id],
   );
   return rows[0];
-}
-
-// The highest number in use, or null before the first invoice. The next
-// invoice number of the organization must stay above it.
-export async function highestNumber(
-  organizationId: string,
-): Promise<number | null> {
-  const { rows } = await pool.query<{ highest: number | null }>(
-    "SELECT max(number) AS highest FROM invoices WHERE organization_id = $1",
-    [organizationId],
-  );
-  return rows[0]?.highest ?? null;
 }
 
 export async function deleteInvoice(
