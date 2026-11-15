@@ -73,7 +73,10 @@ multi-tenant signup and billing.
 - Invoicing: one invoice per visit, generated before or after it (a job that
   is `scheduled` or `completed`). The owner sometimes edits an invoice's date,
   line or amount after generating it, and the number stays (confirmed
-  2026-10-16): no draft or void states.
+  2026-10-16): no draft or void states. Only until it is paid in full
+  (decided 2026-11-14): an invoice whose payments cover its total is locked,
+  and the API refuses to edit it. The payments stay editable, and changing
+  them is the deliberate way to open the invoice again.
 - Helper pay (confirmed 2026-11-14): a helper has a usual hourly rate
   (`helpers.hourly_rate_cents`), and some visits pay a different one. A job,
   and a series as the template of its jobs, carries a rate of its own only
@@ -139,7 +142,9 @@ more than one property.
    elsewhere takes its own copy before that value changes: an invoice copies
    everything it prints when it is created (rule 5), and when a helper's
    usual rate changes, their jobs before today that had no rate of their own
-   get the previous one written on them, in the same statement.
+   get the previous one written on them, in the same statement. And a
+   document that was settled is closed: an invoice paid in full is no longer
+   edited (`locked`, derived from its payments like `paid`, rule 3).
 
 ## 5. Stack
 

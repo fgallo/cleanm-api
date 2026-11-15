@@ -120,8 +120,8 @@ JSON in and out, camelCase keys. Errors always look like
 | `POST /invoices`                     | `{ jobId }`, optional fields, see below             | `201` invoice, `400` or `409`               |
 | `GET /invoices/:id`                  |                                                     | `200` or `404`                              |
 | `GET /invoices/:id/pdf`              |                                                     | `200` PDF or `404`                          |
-| `PATCH /invoices/:id`                | any of the invoice fields, see below                | `200` or `404`                              |
-| `POST /invoices/:id/refresh`         |                                                     | `200` invoice or `404`                      |
+| `PATCH /invoices/:id`                | any of the invoice fields, see below                | `200`, `404` or `409`                       |
+| `POST /invoices/:id/refresh`         |                                                     | `200` invoice, `404` or `409`               |
 | `DELETE /invoices/:id`               |                                                     | `204`, `404` or `409`                       |
 | `POST /invoices/:invoiceId/payments` | `{ method, amountCents }`, see below                | `201` payment, `400` or `404`               |
 | `GET /payments/:id`                  |                                                     | `200` or `404`                              |
@@ -285,12 +285,20 @@ be before `issueDate`, and a fixed discount must not exceed the subtotal
 (`400` on the field). `POST /invoices/:id/refresh` copies `billTo` and
 `issuer` again from the client, the property and the organization as they
 are now, for an invoice issued with something wrong or missing in them; the
-tax and the pricing stay as they were. The list takes an inclusive
-`issueDate` range, newest first, and every invoice comes with its `job`
-(`id`, `scheduledDate`, `status`) and `payments` embedded, `clientId` and
-`propertyId` to link to them, plus `paidCents`, `amountDueCents` and `paid`
-derived from the payments. Deleting an invoice frees the job for a new one;
-the number is not reused. An invoice with payments cannot be deleted (`409`).
+tax and the pricing stay as they were.
+
+An invoice paid in full is closed: once it has payments and they cover the
+total it is `locked`, and both `PATCH` and the refresh answer `409`. Its
+payments remain editable, and lowering or deleting one is the deliberate way
+to open the invoice again. An invoice with nothing to pay (a total of zero)
+is `paid` without ever being locked.
+
+The list takes an inclusive `issueDate` range, newest first, and every
+invoice comes with its `job` (`id`, `scheduledDate`, `status`) and `payments`
+embedded, `clientId` and `propertyId` to link to them, plus `paidCents`,
+`amountDueCents`, `paid` and `locked` derived from the payments. Deleting an
+invoice frees the job for a new one; the number is not reused. An invoice
+with payments cannot be deleted (`409`).
 
 `GET /invoices/:id/pdf` renders the invoice as a PDF (`application/pdf`,
 shown inline), on request and never stored. It prints the invoice's own
@@ -307,7 +315,7 @@ layout. Amounts print in Canadian dollars.
 curl -X POST localhost:3000/invoices \
   -H 'content-type: application/json' \
   -d '{"jobId":"'$JOB_ID'"}'
-# {"id":"...","number":1,"issueDate":"2026-10-16","dueDate":null,"description":"Regular cleaning","serviceDate":"2026-10-14","durationMinutes":150,"hourlyRateCents":4500,"fixedPriceCents":null,"subtotalCents":11250,"fixedDiscountCents":null,"discountBasisPoints":null,"discountCents":0,"discountDescription":null,"taxName":null,"taxRateBasisPoints":0,"taxRegistrationNumber":null,"taxCents":0,"totalCents":11250,"paidCents":0,"amountDueCents":11250,"paid":false,"payments":[],"notes":null,"billTo":{"name":"Jane Doe",...},"issuer":{"name":"Maple Leaf Cleaning",...},"job":{"id":"...","scheduledDate":"2026-10-14","status":"scheduled"},"clientId":"...","propertyId":"...","createdAt":"...","updatedAt":"..."}
+# {"id":"...","number":1,"issueDate":"2026-10-16","dueDate":null,"description":"Regular cleaning","serviceDate":"2026-10-14","durationMinutes":150,"hourlyRateCents":4500,"fixedPriceCents":null,"subtotalCents":11250,"fixedDiscountCents":null,"discountBasisPoints":null,"discountCents":0,"discountDescription":null,"taxName":null,"taxRateBasisPoints":0,"taxRegistrationNumber":null,"taxCents":0,"totalCents":11250,"paidCents":0,"amountDueCents":11250,"paid":false,"locked":false,"payments":[],"notes":null,"billTo":{"name":"Jane Doe",...},"issuer":{"name":"Maple Leaf Cleaning",...},"job":{"id":"...","scheduledDate":"2026-10-14","status":"scheduled"},"clientId":"...","propertyId":"...","createdAt":"...","updatedAt":"..."}
 ```
 
 A payment is money received for an invoice: `method` (`e_transfer` or
@@ -317,8 +325,9 @@ invoice, and the invoice is `paid` once they reach its total; a payment above
 `amountDueCents` answers `400` on the field, and so does any payment on a
 paid invoice. A payment is created under its invoice (`404` when the invoice
 does not exist) and addressed by its own id afterwards; there is no list
-route, because the invoice embeds its payments. Editing an invoice below what
-was already paid is allowed and shows as a negative `amountDueCents`.
+route, because the invoice embeds its payments. Editing a partly paid invoice
+below what was already paid is allowed and shows as a negative
+`amountDueCents`; the invoice is then paid, and locked like any other.
 
 ```sh
 curl -X POST localhost:3000/invoices/$INVOICE_ID/payments \
