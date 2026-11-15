@@ -114,7 +114,7 @@ JSON in and out, camelCase keys. Errors always look like
 | `GET /recurring-series`              |                                                     | `200` list                                  |
 | `POST /recurring-series`             | series fields, see below                            | `201` series                                |
 | `GET /recurring-series/:id`          |                                                     | `200` or `404`                              |
-| `PATCH /recurring-series/:id`        | any of the job template fields, `endDate`           | `200` or `404`                              |
+| `PATCH /recurring-series/:id`        | any of the job template fields, `endDate`           | `200`, `404` or `409`                       |
 | `DELETE /recurring-series/:id`       |                                                     | `204`, `404` or `409`                       |
 | `GET /invoices?from=&to=`            |                                                     | `200` list                                  |
 | `POST /invoices`                     | `{ jobId }`, optional fields, see below             | `201` invoice, `400` or `409`               |
@@ -153,8 +153,10 @@ as "www.example.com"), `paymentInstructions` (free text such as "Interac
 e-Transfer: hello@example.com"), the tax: `taxName`, `taxRateBasisPoints`
 (1300 is 13%; 0 is no tax) and `taxRegistrationNumber`, and
 `nextInvoiceNumber`, the number the next invoice gets: set it once when moving
-from another tool, to a value above every number already used (`400`
-otherwise).
+from another tool, to a value above `lastInvoiceNumber` (`400` otherwise).
+`lastInvoiceNumber` is the highest number ever issued (0 before the first
+invoice); it is read-only and stays when that invoice is deleted, so a number
+is never used twice.
 
 The logo is a PNG or JPEG of at most 1 MB, sent as the body of
 `PUT /organization/logo` with its own `content-type` (no multipart form).
@@ -245,7 +247,9 @@ Each generated job is edited on its own with `PATCH /jobs/:id`, and the
 series never overwrites that: a `PATCH` on the series changes, in its
 upcoming jobs that are still `scheduled` or `estimated`, only the fields that
 still had the series' previous value. Setting `endDate` removes the unrealized
-visits after it; setting it back to `null` resumes generation. A series can be
+visits after it, in one step with the change: when one of those visits is
+already invoiced the series is not ended and nothing changes (`409`). Setting
+it back to `null` resumes generation. A series can be
 deleted, together with its visits, only while none of them was completed or
 cancelled; afterwards it answers `409` and `endDate` is the way to stop it.
 
