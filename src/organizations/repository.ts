@@ -24,6 +24,10 @@ export type OrganizationSettings = {
   // The number the next invoice gets. Set once when moving from another
   // tool, so the sequence continues.
   nextInvoiceNumber: number;
+  // The highest number ever issued, 0 before the first invoice. Kept when
+  // that invoice is deleted: the next number must stay above it, so a number
+  // is never used twice. Not editable.
+  lastInvoiceNumber: number;
   // The logo itself is served by GET /organization/logo.
   hasLogo: boolean;
   createdAt: Date;
@@ -32,7 +36,10 @@ export type OrganizationSettings = {
 
 // Only the keys present are updated; null clears a field.
 export type OrganizationPatch = Partial<
-  Omit<OrganizationSettings, "id" | "hasLogo" | "createdAt" | "updatedAt">
+  Omit<
+    OrganizationSettings,
+    "id" | "lastInvoiceNumber" | "hasLogo" | "createdAt" | "updatedAt"
+  >
 >;
 
 const patchableColumns: Record<keyof OrganizationPatch, string> = {
@@ -72,6 +79,7 @@ const columns = `
   tax_rate_basis_points AS "taxRateBasisPoints",
   tax_registration_number AS "taxRegistrationNumber",
   next_invoice_number AS "nextInvoiceNumber",
+  last_invoice_number AS "lastInvoiceNumber",
   logo IS NOT NULL AS "hasLogo",
   created_at AS "createdAt",
   updated_at AS "updatedAt"
