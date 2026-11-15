@@ -80,53 +80,53 @@ JSON in and out, camelCase keys. Errors always look like
 `{ "error": { "code": "...", "message": "...", "issues": [...] } }`, where
 `issues` (path and message per field) is present for `validation_error`.
 
-| Method and path                      | Body                                      | Response                                    |
-| ------------------------------------ | ----------------------------------------- | ------------------------------------------- |
-| `GET /health`                        |                                           | `200` or `503`                              |
-| `POST /auth/login`                   | `{ email, password }`                     | `200` user and organization, `401` or `429` |
-| `POST /auth/logout`                  |                                           | `204`                                       |
-| `GET /auth/me`                       |                                           | `200` user and organization                 |
-| `GET /organization`                  |                                           | `200` settings                              |
-| `PATCH /organization`                | any of the settings, see below            | `200` settings                              |
-| `PUT /organization/logo`             | the image bytes, see below                | `200` settings, `400`, `413` or `415`       |
-| `GET /organization/logo`             |                                           | `200` image or `404`                        |
-| `DELETE /organization/logo`          |                                           | `204` or `404`                              |
-| `GET /clients`                       |                                           | `200` list                                  |
-| `POST /clients`                      | `{ name, email?, phone? }`                | `201` client                                |
-| `GET /clients/:id`                   |                                           | `200` or `404`                              |
-| `PATCH /clients/:id`                 | any of `name`, `email`, `phone`           | `200` or `404`                              |
-| `DELETE /clients/:id`                |                                           | `204` or `404`                              |
-| `GET /clients/:clientId/properties`  |                                           | `200` list or `404`                         |
-| `POST /clients/:clientId/properties` | property fields, see below                | `201` property or `404`                     |
-| `GET /properties/:id`                |                                           | `200` or `404`                              |
-| `PATCH /properties/:id`              | any of the property fields                | `200` or `404`                              |
-| `DELETE /properties/:id`             |                                           | `204`, `404` or `409`                       |
-| `GET /jobs?from=&to=`                |                                           | `200` list                                  |
-| `POST /jobs`                         | job fields, see below                     | `201` job                                   |
-| `GET /jobs/:id`                      |                                           | `200` or `404`                              |
-| `PATCH /jobs/:id`                    | any of the job fields except `propertyId` | `200` or `404`                              |
-| `DELETE /jobs/:id`                   |                                           | `204`, `404` or `409`                       |
-| `GET /helpers`                       |                                           | `200` list                                  |
-| `POST /helpers`                      | `{ name, phone? }`                        | `201` helper                                |
-| `GET /helpers/:id`                   |                                           | `200` or `404`                              |
-| `PATCH /helpers/:id`                 | any of `name`, `phone`, `active`          | `200` or `404`                              |
-| `DELETE /helpers/:id`                |                                           | `204`, `404` or `409`                       |
-| `GET /recurring-series`              |                                           | `200` list                                  |
-| `POST /recurring-series`             | series fields, see below                  | `201` series                                |
-| `GET /recurring-series/:id`          |                                           | `200` or `404`                              |
-| `PATCH /recurring-series/:id`        | any of the job template fields, `endDate` | `200` or `404`                              |
-| `DELETE /recurring-series/:id`       |                                           | `204`, `404` or `409`                       |
-| `GET /invoices?from=&to=`            |                                           | `200` list                                  |
-| `POST /invoices`                     | `{ jobId }`, optional fields, see below   | `201` invoice, `400` or `409`               |
-| `GET /invoices/:id`                  |                                           | `200` or `404`                              |
-| `GET /invoices/:id/pdf`              |                                           | `200` PDF or `404`                          |
-| `PATCH /invoices/:id`                | any of the invoice fields, see below      | `200` or `404`                              |
-| `DELETE /invoices/:id`               |                                           | `204`, `404` or `409`                       |
-| `POST /invoices/:invoiceId/payments` | `{ method, amountCents }`, see below      | `201` payment, `400` or `404`               |
-| `GET /payments/:id`                  |                                           | `200` or `404`                              |
-| `PATCH /payments/:id`                | any of the payment fields                 | `200` or `404`                              |
-| `DELETE /payments/:id`               |                                           | `204` or `404`                              |
-| `GET /revenue?year=`                 |                                           | `200` twelve months                         |
+| Method and path                      | Body                                                | Response                                    |
+| ------------------------------------ | --------------------------------------------------- | ------------------------------------------- |
+| `GET /health`                        |                                                     | `200` or `503`                              |
+| `POST /auth/login`                   | `{ email, password }`                               | `200` user and organization, `401` or `429` |
+| `POST /auth/logout`                  |                                                     | `204`                                       |
+| `GET /auth/me`                       |                                                     | `200` user and organization                 |
+| `GET /organization`                  |                                                     | `200` settings                              |
+| `PATCH /organization`                | any of the settings, see below                      | `200` settings                              |
+| `PUT /organization/logo`             | the image bytes, see below                          | `200` settings, `400`, `413` or `415`       |
+| `GET /organization/logo`             |                                                     | `200` image or `404`                        |
+| `DELETE /organization/logo`          |                                                     | `204` or `404`                              |
+| `GET /clients`                       |                                                     | `200` list                                  |
+| `POST /clients`                      | `{ name, email?, phone? }`                          | `201` client                                |
+| `GET /clients/:id`                   |                                                     | `200` or `404`                              |
+| `PATCH /clients/:id`                 | any of `name`, `email`, `phone`                     | `200` or `404`                              |
+| `DELETE /clients/:id`                |                                                     | `204` or `404`                              |
+| `GET /clients/:clientId/properties`  |                                                     | `200` list or `404`                         |
+| `POST /clients/:clientId/properties` | property fields, see below                          | `201` property or `404`                     |
+| `GET /properties/:id`                |                                                     | `200` or `404`                              |
+| `PATCH /properties/:id`              | any of the property fields                          | `200` or `404`                              |
+| `DELETE /properties/:id`             |                                                     | `204`, `404` or `409`                       |
+| `GET /jobs?from=&to=`                |                                                     | `200` list                                  |
+| `POST /jobs`                         | job fields, see below                               | `201` job                                   |
+| `GET /jobs/:id`                      |                                                     | `200` or `404`                              |
+| `PATCH /jobs/:id`                    | any of the job fields except `propertyId`           | `200` or `404`                              |
+| `DELETE /jobs/:id`                   |                                                     | `204`, `404` or `409`                       |
+| `GET /helpers`                       |                                                     | `200` list                                  |
+| `POST /helpers`                      | `{ name, phone?, hourlyRateCents? }`                | `201` helper                                |
+| `GET /helpers/:id`                   |                                                     | `200` or `404`                              |
+| `PATCH /helpers/:id`                 | any of `name`, `phone`, `hourlyRateCents`, `active` | `200` or `404`                              |
+| `DELETE /helpers/:id`                |                                                     | `204`, `404` or `409`                       |
+| `GET /recurring-series`              |                                                     | `200` list                                  |
+| `POST /recurring-series`             | series fields, see below                            | `201` series                                |
+| `GET /recurring-series/:id`          |                                                     | `200` or `404`                              |
+| `PATCH /recurring-series/:id`        | any of the job template fields, `endDate`           | `200` or `404`                              |
+| `DELETE /recurring-series/:id`       |                                                     | `204`, `404` or `409`                       |
+| `GET /invoices?from=&to=`            |                                                     | `200` list                                  |
+| `POST /invoices`                     | `{ jobId }`, optional fields, see below             | `201` invoice, `400` or `409`               |
+| `GET /invoices/:id`                  |                                                     | `200` or `404`                              |
+| `GET /invoices/:id/pdf`              |                                                     | `200` PDF or `404`                          |
+| `PATCH /invoices/:id`                | any of the invoice fields, see below                | `200` or `404`                              |
+| `DELETE /invoices/:id`               |                                                     | `204`, `404` or `409`                       |
+| `POST /invoices/:invoiceId/payments` | `{ method, amountCents }`, see below                | `201` payment, `400` or `404`               |
+| `GET /payments/:id`                  |                                                     | `200` or `404`                              |
+| `PATCH /payments/:id`                | any of the payment fields                           | `200` or `404`                              |
+| `DELETE /payments/:id`               |                                                     | `204` or `404`                              |
+| `GET /revenue?year=`                 |                                                     | `200` twelve months                         |
 
 Every route except `/health` and `POST /auth/login` needs a signed-in user and
 answers `401 unauthorized` without one. Signing in sets the `cleanm_session`
@@ -200,9 +200,9 @@ by date and time, and every job comes with its `property`, `client`, `helper`
 (`YYYY-MM-DD`), `startTime` (`HH:MM`), `durationMinutes`, `serviceType`
 (`regular`, `deep`, `move_in`, `move_out`) and `hourlyRateCents` are required;
 `status` (`estimated`, `scheduled`, `completed`, `cancelled`; default
-`scheduled`), `fixedPriceCents`, `helperId` and `notes` are optional.
-`priceCents` is derived: the fixed price when set, otherwise hourly rate ×
-duration. A `propertyId` or `helperId` that does not exist, or a helper that
+`scheduled`), `fixedPriceCents`, `helperId`, `helperHourlyRateCents` and
+`notes` are optional. `priceCents` is derived: the fixed price when set,
+otherwise hourly rate × duration. A `propertyId` or `helperId` that does not exist, or a helper that
 is not active, answers `400 validation_error` on that field. Jobs generated
 by a recurring series carry its id in `recurringSeriesId`. A job with an
 invoice cannot be deleted (`409`).
@@ -211,7 +211,7 @@ invoice cannot be deleted (`409`).
 curl -X POST localhost:3000/jobs \
   -H 'content-type: application/json' \
   -d '{"propertyId":"'$PROPERTY_ID'","scheduledDate":"2026-10-14","startTime":"09:00","durationMinutes":150,"serviceType":"regular","hourlyRateCents":4500}'
-# {"id":"...","scheduledDate":"2026-10-14","startTime":"09:00:00","durationMinutes":150,"serviceType":"regular","status":"scheduled","hourlyRateCents":4500,"fixedPriceCents":null,"priceCents":11250,"notes":null,"property":{...},"client":{"id":"...","name":"Jane Doe"},"helper":null,"recurringSeriesId":null,"invoice":null,"createdAt":"...","updatedAt":"..."}
+# {"id":"...","scheduledDate":"2026-10-14","startTime":"09:00:00","durationMinutes":150,"serviceType":"regular","status":"scheduled","hourlyRateCents":4500,"fixedPriceCents":null,"priceCents":11250,"notes":null,"property":{...},"client":{"id":"...","name":"Jane Doe"},"helper":null,"helperHourlyRateCents":null,"recurringSeriesId":null,"invoice":null,"createdAt":"...","updatedAt":"..."}
 ```
 
 A helper is a person who does the cleaning and can be assigned to a job. A
@@ -219,13 +219,23 @@ helper with jobs cannot be deleted (`409`); one who left the business is
 deactivated with `active: false` instead, which keeps the history and stops
 new assignments. The list includes inactive helpers.
 
+`hourlyRateCents` on a helper is what they are usually paid for an hour of
+work. A job that pays its helper differently carries
+`helperHourlyRateCents`; `null` there means the usual rate, which the job
+embeds as `helper.hourlyRateCents`. The rate on a job belongs to the job: it
+stays when the helper changes. Changing a helper's usual rate applies from
+today on: the jobs before today that had no rate of their own get the
+previous one written on them, so what was paid for work already done does
+not change.
+
 A recurring series creates the jobs of a recurring client ahead of time: at
 least eight weeks ahead, or as far as the calendar asks for with
 `GET /jobs?to=`. Series fields: `propertyId`, `startDate`, exactly one of
 `everyWeeks` (1 for weekly, 2 for biweekly, 4 for every four weeks, on the
 weekday of `startDate`) or `dayOfMonth` (1 to 31, the last day of shorter
 months), the job template (`startTime`, `durationMinutes`, `serviceType`,
-`hourlyRateCents`, `fixedPriceCents?`, `helperId?`, `notes?`) and an optional
+`hourlyRateCents`, `fixedPriceCents?`, `helperId?`, `helperHourlyRateCents?`,
+`notes?`) and an optional
 `endDate`. The rule and the property cannot change: to change the rhythm, end
 the series with `endDate` and create another one.
 

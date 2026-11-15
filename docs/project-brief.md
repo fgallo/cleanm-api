@@ -74,6 +74,12 @@ multi-tenant signup and billing.
   is `scheduled` or `completed`). The owner sometimes edits an invoice's date,
   line or amount after generating it, and the number stays (confirmed
   2026-10-16): no draft or void states.
+- Helper pay (confirmed 2026-11-14): a helper has a usual hourly rate
+  (`helpers.hourly_rate_cents`), and some visits pay a different one. A job,
+  and a series as the template of its jobs, carries a rate of its own only
+  then (`helper_hourly_rate_cents`; null means the usual rate). The rate on a
+  job belongs to the job and stays when its helper changes. What a helper
+  earned (rate x hours) is not computed yet.
 
 ## 4. Data model sketch
 
@@ -121,6 +127,15 @@ more than one property.
    with jobs, later a job with an invoice): the API answers `409 conflict`, so
    history is kept. Where a row must still be retired, it gets a flag instead
    (`helpers.active`).
+7. What already happened does not change because something else was edited
+   later (stated on 2026-11-14: invoices are fiscal documents, kept as they
+   are for checking and accountability). A record that reads a value kept
+   elsewhere takes its own copy before that value changes: an invoice copies
+   its job's pricing and the organization's tax when it is created (rule 5),
+   and when a helper's usual rate changes, their jobs before today that had
+   no rate of their own get the previous one written on them, in the same
+   statement. Not true yet for what an invoice prints about the client, the
+   property and the business: those are read when the invoice is shown.
 
 ## 5. Stack
 
