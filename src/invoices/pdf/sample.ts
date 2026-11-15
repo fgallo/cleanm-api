@@ -25,6 +25,7 @@ export const sampleInvoice: Invoice = {
   paidCents: 0,
   amountDueCents: 11250,
   paid: false,
+  locked: false,
   payments: [],
   notes: null,
   billTo: {
