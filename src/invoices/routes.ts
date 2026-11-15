@@ -75,20 +75,18 @@ invoicesRouter.get("/:id", async (req, res) => {
   res.json(invoice);
 });
 
-// Rendered on request, never stored: the PDF always shows the invoice as it
-// is now, with the organization's current details and logo.
+// Rendered on request, never stored. Everything it prints is the invoice's
+// own copy, so the same invoice gives the same page whatever was edited
+// since; only the logo is the organization's current one.
 invoicesRouter.get("/:id/pdf", async (req, res) => {
   const { id } = invoiceIdSchema.parse(req.params);
   const invoice = await invoices.findInvoice(res.locals.organizationId, id);
   if (invoice === undefined) {
     throw new NotFoundError("Invoice not found");
   }
-  const [organization, logo] = await Promise.all([
-    organizations.findOrganization(res.locals.organizationId),
-    organizations.findLogo(res.locals.organizationId),
-  ]);
+  const logo = await organizations.findLogo(res.locals.organizationId);
 
-  const pdf = await renderPdf(invoiceHtml({ invoice, organization, logo }));
+  const pdf = await renderPdf(invoiceHtml({ invoice, logo }));
   res
     .type("application/pdf")
     .set(
@@ -117,6 +115,18 @@ invoicesRouter.patch("/:id", async (req, res) => {
     id,
     patch,
   );
+  if (invoice === undefined) {
+    throw new NotFoundError("Invoice not found");
+  }
+  res.json(invoice);
+});
+
+// An invoice does not follow the client, the property or the organization
+// when they are edited. This is the way to bring their current details into
+// one invoice on purpose, such as after fixing a misspelled name.
+invoicesRouter.post("/:id/refresh", async (req, res) => {
+  const { id } = invoiceIdSchema.parse(req.params);
+  const invoice = await invoices.refreshInvoice(res.locals.organizationId, id);
   if (invoice === undefined) {
     throw new NotFoundError("Invoice not found");
   }

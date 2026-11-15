@@ -1,30 +1,6 @@
-// An invented invoice and business, for the template tests and the preview
-// script. Never real data: this repository is public.
-import type { OrganizationSettings } from "../../organizations/repository.ts";
+// An invented invoice, with the business that issues it, for the template
+// tests and the preview script. Never real data: this repository is public.
 import type { Invoice } from "../repository.ts";
-
-export const sampleOrganization: OrganizationSettings = {
-  id: "00000000-0000-7000-8000-000000000001",
-  name: "Maple Leaf Cleaning",
-  timezone: "America/Toronto",
-  addressLine1: "456 Sample Ave",
-  addressLine2: null,
-  city: "Toronto",
-  province: "ON",
-  postalCode: "M4B 1B3",
-  country: "CA",
-  phone: "416-555-0100",
-  email: "hello@example.com",
-  website: "www.example.com",
-  paymentInstructions: "Interac e-Transfer: hello@example.com",
-  taxName: null,
-  taxRateBasisPoints: 0,
-  taxRegistrationNumber: null,
-  nextInvoiceNumber: 135,
-  hasLogo: false,
-  createdAt: new Date("2026-10-01T12:00:00Z"),
-  updatedAt: new Date("2026-10-01T12:00:00Z"),
-};
 
 export const sampleInvoice: Invoice = {
   id: "00000000-0000-7000-8000-000000000002",
@@ -43,6 +19,7 @@ export const sampleInvoice: Invoice = {
   discountDescription: null,
   taxName: null,
   taxRateBasisPoints: 0,
+  taxRegistrationNumber: null,
   taxCents: 0,
   totalCents: 11250,
   paidCents: 0,
@@ -50,19 +27,10 @@ export const sampleInvoice: Invoice = {
   paid: false,
   payments: [],
   notes: null,
-  job: {
-    id: "00000000-0000-7000-8000-000000000003",
-    scheduledDate: "2026-10-14",
-    status: "completed",
-  },
-  client: {
-    id: "00000000-0000-7000-8000-000000000004",
+  billTo: {
     name: "Jane Doe",
     email: "jane@example.com",
     phone: null,
-  },
-  property: {
-    id: "00000000-0000-7000-8000-000000000005",
     addressLine1: "123 Example St",
     addressLine2: "Apt 702",
     city: "Toronto",
@@ -70,6 +38,26 @@ export const sampleInvoice: Invoice = {
     postalCode: "M5V 0A1",
     country: "CA",
   },
+  issuer: {
+    name: "Maple Leaf Cleaning",
+    addressLine1: "456 Sample Ave",
+    addressLine2: null,
+    city: "Toronto",
+    province: "ON",
+    postalCode: "M4B 1B3",
+    country: "CA",
+    phone: "416-555-0100",
+    email: "hello@example.com",
+    website: "www.example.com",
+    paymentInstructions: "Interac e-Transfer: hello@example.com",
+  },
+  job: {
+    id: "00000000-0000-7000-8000-000000000003",
+    scheduledDate: "2026-10-14",
+    status: "completed",
+  },
+  clientId: "00000000-0000-7000-8000-000000000004",
+  propertyId: "00000000-0000-7000-8000-000000000005",
   createdAt: new Date("2026-10-16T12:00:00Z"),
   updatedAt: new Date("2026-10-16T12:00:00Z"),
 };
