@@ -30,7 +30,8 @@ type JobBody = {
   notes: string | null;
   property: { id: string; addressLine1: string };
   client: { id: string; name: string };
-  helper: { id: string; name: string } | null;
+  helper: { id: string; name: string; hourlyRateCents: number | null } | null;
+  helperHourlyRateCents: number | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -133,6 +134,7 @@ describe("POST /jobs", () => {
       },
       client: { id: clientId, name: "Jane Doe" },
       helper: null,
+      helperHourlyRateCents: null,
       recurringSeriesId: null,
       invoice: null,
       createdAt: expect.any(String),
@@ -140,13 +142,54 @@ describe("POST /jobs", () => {
     });
   });
 
-  it("assigns a helper", async () => {
+  it("assigns a helper, paid their usual rate", async () => {
     const { propertyId } = await createProperty();
-    const helperId = await createHelper({ name: "Maria Silva" });
+    const helperId = await createHelper({
+      name: "Maria Silva",
+      hourlyRateCents: 2200,
+    });
 
     const job = await createJob(propertyId, { helperId });
 
-    expect(job.helper).toEqual({ id: helperId, name: "Maria Silva" });
+    expect(job.helper).toEqual({
+      id: helperId,
+      name: "Maria Silva",
+      hourlyRateCents: 2200,
+    });
+    expect(job.helperHourlyRateCents).toBeNull();
+  });
+
+  it("pays the helper another rate when the job has its own", async () => {
+    const { propertyId } = await createProperty();
+    const helperId = await createHelper({ hourlyRateCents: 2200 });
+
+    const job = await createJob(propertyId, {
+      helperId,
+      helperHourlyRateCents: 2500,
+    });
+
+    expect(job.helperHourlyRateCents).toBe(2500);
+    // The helper's usual rate is untouched.
+    expect(job.helper?.hourlyRateCents).toBe(2200);
+  });
+
+  it("answers 400 for a negative helper rate", async () => {
+    const { propertyId } = await createProperty();
+
+    const res = await api.post("/jobs", {
+      propertyId,
+      scheduledDate: "2026-10-14",
+      startTime: "09:00",
+      durationMinutes: 150,
+      serviceType: "regular",
+      hourlyRateCents: 4500,
+      helperHourlyRateCents: -1,
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({
+      error: { issues: [{ path: "helperHourlyRateCents" }] },
+    });
   });
 
   it("answers 400 for a helper that does not exist", async () => {
@@ -223,6 +266,7 @@ describe("POST /jobs", () => {
     expect(job).toMatchObject({
       status: "scheduled",
       fixedPriceCents: null,
+      helperHourlyRateCents: null,
       notes: null,
     });
   });
@@ -486,9 +530,48 @@ describe("PATCH /jobs/:id", () => {
     });
 
     expect(assigned.status).toBe(200);
-    expect(assigned.body.helper).toEqual({ id: helperId, name: "Maria Silva" });
+    expect(assigned.body.helper).toEqual({
+      id: helperId,
+      name: "Maria Silva",
+      hourlyRateCents: null,
+    });
     expect(unassigned.status).toBe(200);
     expect(unassigned.body.helper).toBeNull();
+  });
+
+  it("sets and clears the helper's rate for the job", async () => {
+    const { propertyId } = await createProperty();
+    const helperId = await createHelper({ hourlyRateCents: 2200 });
+    const job = await createJob(propertyId, { helperId });
+
+    const set = await api.patch<JobBody>(`/jobs/${job.id}`, {
+      helperHourlyRateCents: 2500,
+    });
+    const cleared = await api.patch<JobBody>(`/jobs/${job.id}`, {
+      helperHourlyRateCents: null,
+    });
+
+    expect(set.body.helperHourlyRateCents).toBe(2500);
+    expect(cleared.body.helperHourlyRateCents).toBeNull();
+  });
+
+  it("keeps the job's helper rate when the helper changes", async () => {
+    const { propertyId } = await createProperty();
+    const first = await createHelper({ hourlyRateCents: 2200 });
+    const second = await createHelper({ name: "Zoe", hourlyRateCents: 2000 });
+    const job = await createJob(propertyId, {
+      helperId: first,
+      helperHourlyRateCents: 2500,
+    });
+
+    const res = await api.patch<JobBody>(`/jobs/${job.id}`, {
+      helperId: second,
+    });
+
+    expect(res.body).toMatchObject({
+      helper: { id: second, hourlyRateCents: 2000 },
+      helperHourlyRateCents: 2500,
+    });
   });
 
   it("answers 400 for a helper that is not active", async () => {
@@ -516,7 +599,11 @@ describe("PATCH /jobs/:id", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(res.body.helper).toEqual({ id: helperId, name: "Maria Silva" });
+    expect(res.body.helper).toEqual({
+      id: helperId,
+      name: "Maria Silva",
+      hourlyRateCents: null,
+    });
   });
 
   it("does not accept a new property", async () => {

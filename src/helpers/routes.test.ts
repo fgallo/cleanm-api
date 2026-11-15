@@ -7,10 +7,17 @@ const api = await startApi();
 
 const missingId = "00000000-0000-7000-8000-000000000000";
 
+// Today on the organization's calendar (the test organization is in Toronto),
+// the same way the repository sees it.
+const today = new Date().toLocaleDateString("en-CA", {
+  timeZone: "America/Toronto",
+});
+
 type HelperBody = {
   id: string;
   name: string;
   phone: string | null;
+  hourlyRateCents: number | null;
   active: boolean;
   createdAt: string;
   updatedAt: string;
@@ -25,6 +32,51 @@ async function createHelper(input: object = {}): Promise<HelperBody> {
   return res.body;
 }
 
+// A job of the helper on the given day; `input` may give the job a helper
+// rate of its own.
+async function createJobOf(
+  helperId: string,
+  scheduledDate: string,
+  input: object = {},
+): Promise<string> {
+  const client = await api.post<{ id: string }>("/clients", {
+    name: "Jane Doe",
+  });
+  const property = await api.post<{ id: string }>(
+    `/clients/${client.body.id}/properties`,
+    {
+      addressLine1: "123 Example St",
+      city: "Toronto",
+      province: "ON",
+      postalCode: "M5V 0A1",
+    },
+  );
+  const job = await api.post<{ id: string }>("/jobs", {
+    propertyId: property.body.id,
+    helperId,
+    scheduledDate,
+    startTime: "09:00",
+    durationMinutes: 60,
+    serviceType: "regular",
+    hourlyRateCents: 4500,
+    ...input,
+  });
+  expect(job.status).toBe(201);
+  return job.body.id;
+}
+
+// The helper rate each job carries itself; null is the helper's usual rate.
+async function ownRatesOf(...jobIds: string[]): Promise<Array<number | null>> {
+  const rates: Array<number | null> = [];
+  for (const id of jobIds) {
+    const job = await api.get<{ helperHourlyRateCents: number | null }>(
+      `/jobs/${id}`,
+    );
+    rates.push(job.body.helperHourlyRateCents);
+  }
+  return rates;
+}
+
 // A helper that exists, but in an organization the API is not serving.
 async function createHelperElsewhere(): Promise<string> {
   const other = await createOrganization();
@@ -37,6 +89,7 @@ describe("POST /helpers", () => {
     const res = await api.post("/helpers", {
       name: "Maria Silva",
       phone: "416-555-0199",
+      hourlyRateCents: 2200,
     });
 
     expect(res.status).toBe(201);
@@ -44,6 +97,7 @@ describe("POST /helpers", () => {
       id: expect.any(String),
       name: "Maria Silva",
       phone: "416-555-0199",
+      hourlyRateCents: 2200,
       active: true,
       createdAt: expect.any(String),
       updatedAt: expect.any(String),
@@ -55,6 +109,27 @@ describe("POST /helpers", () => {
 
     expect(res.status).toBe(201);
     expect(res.body).toMatchObject({ active: true, phone: null });
+  });
+
+  it("leaves the hourly rate empty when none is given", async () => {
+    const helper = await createHelper();
+
+    expect(helper.hourlyRateCents).toBeNull();
+  });
+
+  it("answers 400 for a negative hourly rate", async () => {
+    const res = await api.post("/helpers", {
+      name: "Maria Silva",
+      hourlyRateCents: -1,
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({
+      error: {
+        code: "validation_error",
+        issues: [{ path: "hourlyRateCents" }],
+      },
+    });
   });
 
   it("answers 400 without a name", async () => {
@@ -143,6 +218,67 @@ describe("PATCH /helpers/:id", () => {
 
     expect(off.body).toMatchObject({ active: false });
     expect(on.body).toMatchObject({ active: true });
+  });
+
+  it("sets and clears the hourly rate", async () => {
+    const helper = await createHelper();
+
+    const set = await api.patch(`/helpers/${helper.id}`, {
+      hourlyRateCents: 2200,
+    });
+    const cleared = await api.patch(`/helpers/${helper.id}`, {
+      hourlyRateCents: null,
+    });
+
+    expect(set.body).toMatchObject({ hourlyRateCents: 2200 });
+    expect(cleared.body).toMatchObject({ hourlyRateCents: null });
+  });
+
+  it("keeps the previous rate on the jobs before today that had none of their own", async () => {
+    const helper = await createHelper({ hourlyRateCents: 2200 });
+    const past = await createJobOf(helper.id, "2020-01-15");
+    const pastWithOwnRate = await createJobOf(helper.id, "2020-01-16", {
+      helperHourlyRateCents: 2500,
+    });
+    const todays = await createJobOf(helper.id, today);
+    const upcoming = await createJobOf(helper.id, "2099-01-15");
+
+    const res = await api.patch(`/helpers/${helper.id}`, {
+      hourlyRateCents: 2400,
+    });
+
+    expect(res.body).toMatchObject({ hourlyRateCents: 2400 });
+    // The work already done stays at 22.00; from today on, the new usual
+    // rate applies.
+    expect(await ownRatesOf(past, pastWithOwnRate, todays, upcoming)).toEqual([
+      2200,
+      2500,
+      null,
+      null,
+    ]);
+  });
+
+  it("keeps the previous rate on past jobs when the rate is cleared", async () => {
+    const helper = await createHelper({ hourlyRateCents: 2200 });
+    const past = await createJobOf(helper.id, "2020-01-15");
+
+    await api.patch(`/helpers/${helper.id}`, { hourlyRateCents: null });
+
+    expect(await ownRatesOf(past)).toEqual([2200]);
+  });
+
+  it("leaves past jobs alone when the rate does not change", async () => {
+    const helper = await createHelper({ hourlyRateCents: 2200 });
+    const past = await createJobOf(helper.id, "2020-01-15");
+    const others = await createHelper({ name: "Zoe", hourlyRateCents: 2200 });
+    const othersPast = await createJobOf(others.id, "2020-01-15");
+
+    await api.patch(`/helpers/${helper.id}`, { name: "Maria S. Silva" });
+    await api.patch(`/helpers/${helper.id}`, { hourlyRateCents: 2200 });
+    // Another helper's raise is not this one's.
+    await api.patch(`/helpers/${others.id}`, { hourlyRateCents: 2400 });
+
+    expect(await ownRatesOf(past, othersPast)).toEqual([null, 2200]);
   });
 
   it("answers 400 when active is not a boolean", async () => {
