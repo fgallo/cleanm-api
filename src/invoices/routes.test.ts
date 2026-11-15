@@ -37,12 +37,15 @@ type InvoiceBody = {
   subtotalCents: number;
   taxName: string | null;
   taxRateBasisPoints: number;
+  taxRegistrationNumber: string | null;
   taxCents: number;
   totalCents: number;
   notes: string | null;
+  billTo: { name: string; email: string | null; addressLine1: string };
+  issuer: { name: string; phone: string | null };
   job: { id: string; scheduledDate: string; status: string };
-  client: { id: string; name: string };
-  property: { id: string; addressLine1: string };
+  clientId: string;
+  propertyId: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -54,6 +57,47 @@ type JobBody = {
 };
 
 const noTax = { taxName: null, taxRateBasisPoints: 0 };
+
+// The organization as test/api.ts creates it: a name and nothing else. A
+// test that fills in what an invoice copies from it puts this back.
+const bareBusiness = {
+  name: "Test Organization",
+  addressLine1: null,
+  addressLine2: null,
+  city: null,
+  province: null,
+  postalCode: null,
+  country: "CA",
+  phone: null,
+  email: null,
+  website: null,
+  paymentInstructions: null,
+};
+
+const business = {
+  name: "Maple Leaf Cleaning",
+  addressLine1: "456 Sample Ave",
+  addressLine2: "Unit 2",
+  city: "Toronto",
+  province: "ON",
+  postalCode: "M4B 1B3",
+  country: "CA",
+  phone: "416-555-0100",
+  email: "hello@example.com",
+  website: "www.example.com",
+  paymentInstructions: "Interac e-Transfer: hello@example.com",
+};
+
+const registered = {
+  taxName: "HST",
+  taxRateBasisPoints: 1300,
+  taxRegistrationNumber: "123456789 RT0001",
+};
+const notRegistered = { ...noTax, taxRegistrationNumber: null };
+
+async function setOrganization(settings: object): Promise<void> {
+  expect((await api.patch("/organization", settings)).status).toBe(200);
+}
 
 async function createProperty(): Promise<{
   clientId: string;
@@ -129,7 +173,7 @@ async function createJobElsewhere(): Promise<{
 }
 
 describe("POST /invoices", () => {
-  it("creates an invoice from a job, with the job, client and property embedded", async () => {
+  it("creates an invoice from a job, with who it bills and who issues it", async () => {
     const { clientId, propertyId } = await createProperty();
     const job = await createJob(propertyId);
     const today = await organizations.today(api.organizationId);
@@ -154,6 +198,7 @@ describe("POST /invoices", () => {
       discountDescription: null,
       taxName: null,
       taxRateBasisPoints: 0,
+      taxRegistrationNumber: null,
       taxCents: 0,
       totalCents: 11250,
       paidCents: 0,
@@ -161,14 +206,18 @@ describe("POST /invoices", () => {
       paid: false,
       payments: [],
       notes: null,
-      job: { id: job.id, scheduledDate: "2026-10-14", status: "scheduled" },
-      client: { id: clientId, name: "Jane Doe", email: null, phone: null },
-      property: {
-        id: propertyId,
+      billTo: {
+        name: "Jane Doe",
+        email: null,
+        phone: null,
         ...address,
         addressLine2: null,
         country: "CA",
       },
+      issuer: bareBusiness,
+      job: { id: job.id, scheduledDate: "2026-10-14", status: "scheduled" },
+      clientId,
+      propertyId,
       createdAt: expect.any(String),
       updatedAt: expect.any(String),
     });
@@ -262,6 +311,60 @@ describe("POST /invoices", () => {
       hourlyRateCents: 4500,
       subtotalCents: 11250,
     });
+  });
+
+  it("keeps who it bills when the client and the property change afterwards", async () => {
+    const { clientId, propertyId } = await createProperty();
+    const invoice = await createInvoice((await createJob(propertyId)).id);
+
+    const client = await api.patch(`/clients/${clientId}`, {
+      name: "Jane Smith",
+      email: "jane.smith@example.com",
+    });
+    const property = await api.patch(`/properties/${propertyId}`, {
+      addressLine1: "9 Other Ave",
+      city: "Ottawa",
+    });
+
+    expect([client.status, property.status]).toEqual([200, 200]);
+    expect(invoice.billTo).toMatchObject({
+      name: "Jane Doe",
+      email: null,
+      addressLine1: "123 Example St",
+      city: "Toronto",
+    });
+    expect(
+      (await api.get<InvoiceBody>(`/invoices/${invoice.id}`)).body.billTo,
+    ).toEqual(invoice.billTo);
+  });
+
+  it("copies the business that issues it, with its registration number, and keeps them", async () => {
+    const { propertyId } = await createProperty();
+    const job = await createJob(propertyId);
+    await setOrganization({ ...business, ...registered });
+    const invoice = await createInvoice(job.id);
+    await setOrganization({ ...bareBusiness, ...notRegistered });
+
+    const issued = {
+      issuer: business,
+      taxName: "HST",
+      taxRegistrationNumber: "123456789 RT0001",
+    };
+    expect(invoice).toMatchObject(issued);
+    expect((await api.get(`/invoices/${invoice.id}`)).body).toMatchObject(
+      issued,
+    );
+  });
+
+  it("gives no registration number to an invoice issued before the business registered", async () => {
+    const { propertyId } = await createProperty();
+    const invoice = await createInvoice((await createJob(propertyId)).id);
+
+    await setOrganization(registered);
+    const later = await api.get<InvoiceBody>(`/invoices/${invoice.id}`);
+    await setOrganization(notRegistered);
+
+    expect(later.body).toMatchObject(notRegistered);
   });
 
   it("answers 400 for a job that does not exist", async () => {
@@ -790,6 +893,81 @@ describe("PATCH /invoices/:id", () => {
     const res = await api.patch(`/invoices/${missingId}`, { notes: "x" });
 
     expect(res.status).toBe(404);
+  });
+});
+
+describe("POST /invoices/:id/refresh", () => {
+  it("copies the client, the property and the business again, as they are now", async () => {
+    const { clientId, propertyId } = await createProperty();
+    const invoice = await createInvoice((await createJob(propertyId)).id);
+    await api.patch(`/clients/${clientId}`, { name: "Jane Smith" });
+    await api.patch(`/properties/${propertyId}`, {
+      addressLine1: "9 Other Ave",
+    });
+    await setOrganization(business);
+
+    const res = await api.post<InvoiceBody>(
+      `/invoices/${invoice.id}/refresh`,
+      undefined,
+    );
+    await setOrganization(bareBusiness);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      id: invoice.id,
+      number: invoice.number,
+      billTo: { name: "Jane Smith", addressLine1: "9 Other Ave" },
+      issuer: business,
+    });
+    expect((await api.get(`/invoices/${invoice.id}`)).body).toEqual(res.body);
+  });
+
+  it("leaves the tax and the pricing as they were", async () => {
+    const { propertyId } = await createProperty();
+    const job = await createJob(propertyId);
+    const invoice = await createInvoice(job.id);
+    await setOrganization(registered);
+    await api.patch(`/jobs/${job.id}`, { hourlyRateCents: 5000 });
+
+    const res = await api.post<InvoiceBody>(
+      `/invoices/${invoice.id}/refresh`,
+      undefined,
+    );
+    await setOrganization(notRegistered);
+
+    expect(res.body).toMatchObject({
+      ...notRegistered,
+      hourlyRateCents: 4500,
+      totalCents: 11250,
+    });
+  });
+
+  it("answers 404 for an invoice that does not exist", async () => {
+    const res = await api.post(`/invoices/${missingId}/refresh`, undefined);
+
+    expect(res.status).toBe(404);
+  });
+
+  it("answers 404 for an invoice of another organization, and leaves it alone", async () => {
+    const { organizationId, jobId } = await createJobElsewhere();
+    const invoice = await invoices.createInvoice(organizationId, {
+      jobId,
+      issueDate: "2026-10-16",
+      description: "Regular cleaning",
+    });
+    if (invoice === undefined) {
+      throw new Error("Expected the invoice to be created");
+    }
+    await organizations.updateOrganization(organizationId, {
+      phone: "416-555-0199",
+    });
+
+    const res = await api.post(`/invoices/${invoice.id}/refresh`, undefined);
+
+    expect(res.status).toBe(404);
+    expect(
+      (await invoices.findInvoice(organizationId, invoice.id))?.issuer.phone,
+    ).toBeNull();
   });
 });
 
