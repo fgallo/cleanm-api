@@ -29,7 +29,8 @@ type InvoiceBody = {
   number: number;
   issueDate: string;
   dueDate: string | null;
-  description: string;
+  item: string;
+  description: string | null;
   serviceDate: string;
   durationMinutes: number;
   hourlyRateCents: number;
@@ -186,7 +187,9 @@ describe("POST /invoices", () => {
       number: expect.any(Number),
       issueDate: today,
       dueDate: null,
-      description: "Regular cleaning",
+      // The kind of cleaning the job is, and nothing written next to it.
+      item: "Regular cleaning",
+      description: null,
       serviceDate: "2026-10-14",
       durationMinutes: 150,
       hourlyRateCents: 4500,
@@ -239,14 +242,16 @@ describe("POST /invoices", () => {
     const invoice = await createInvoice(job.id, {
       issueDate: "2026-10-16",
       dueDate: "2026-10-30",
-      description: "Regular cleaning, windows included",
+      item: "Window cleaning",
+      description: "Inside and out, ground floor",
       notes: "Second key under the mat",
     });
 
     expect(invoice).toMatchObject({
       issueDate: "2026-10-16",
       dueDate: "2026-10-30",
-      description: "Regular cleaning, windows included",
+      item: "Window cleaning",
+      description: "Inside and out, ground floor",
       notes: "Second key under the mat",
     });
   });
@@ -255,11 +260,14 @@ describe("POST /invoices", () => {
     ["deep", "Deep cleaning"],
     ["move_in", "Move-in cleaning"],
     ["move_out", "Move-out cleaning"],
-  ])("describes a %s job as %s", async (serviceType, description) => {
+  ])("names the item of a %s job %s", async (serviceType, item) => {
     const { propertyId } = await createProperty();
     const job = await createJob(propertyId, { serviceType });
 
-    expect((await createInvoice(job.id)).description).toBe(description);
+    expect(await createInvoice(job.id)).toMatchObject({
+      item,
+      description: null,
+    });
   });
 
   it("uses the fixed price of the job when it has one", async () => {
@@ -539,7 +547,9 @@ describe("POST /invoices", () => {
     const res = await api.post("/invoices", {
       jobId: "not-a-uuid",
       issueDate: "16/10/2026",
-      description: "",
+      item: "",
+      // No description is null, not an empty text.
+      description: " ",
       notes: 42,
     });
 
@@ -550,6 +560,7 @@ describe("POST /invoices", () => {
         issues: [
           { path: "jobId" },
           { path: "issueDate" },
+          { path: "item" },
           { path: "description" },
           { path: "notes" },
         ],
@@ -600,7 +611,7 @@ describe("POST /invoices", () => {
     const again = await invoices.createInvoice(api.organizationId, {
       jobId: job.id,
       issueDate: "2026-10-16",
-      description: "Regular cleaning",
+      item: "Regular cleaning",
     });
 
     expect(again).toBeUndefined();
@@ -638,7 +649,7 @@ describe("GET /invoices", () => {
     await invoices.createInvoice(organizationId, {
       jobId,
       issueDate: "2026-10-16",
-      description: "Regular cleaning",
+      item: "Regular cleaning",
     });
 
     const res = await api.get<InvoiceBody[]>(
@@ -686,7 +697,7 @@ describe("GET /invoices/:id", () => {
     const invoice = await invoices.createInvoice(organizationId, {
       jobId,
       issueDate: "2026-10-16",
-      description: "Regular cleaning",
+      item: "Regular cleaning",
     });
 
     const res = await api.get(`/invoices/${invoice?.id}`);
@@ -704,7 +715,8 @@ describe("PATCH /invoices/:id", () => {
       issueDate: "2026-10-20",
       dueDate: "2026-11-19",
       serviceDate: "2026-10-15",
-      description: "Deep cleaning, oven included",
+      item: "Deep cleaning",
+      description: "Oven included",
       notes: "Half paid in cash",
     });
 
@@ -714,11 +726,42 @@ describe("PATCH /invoices/:id", () => {
       issueDate: "2026-10-20",
       dueDate: "2026-11-19",
       serviceDate: "2026-10-15",
-      description: "Deep cleaning, oven included",
+      item: "Deep cleaning",
+      description: "Oven included",
       notes: "Half paid in cash",
       updatedAt: expect.any(String),
     });
     expect((await api.get(`/invoices/${invoice.id}`)).body).toEqual(res.body);
+  });
+
+  it("clears the description with null and keeps the item", async () => {
+    const { propertyId } = await createProperty();
+    const invoice = await createInvoice((await createJob(propertyId)).id, {
+      description: "Oven included",
+    });
+    expect(invoice.description).toBe("Oven included");
+
+    const res = await api.patch<InvoiceBody>(`/invoices/${invoice.id}`, {
+      description: null,
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      item: "Regular cleaning",
+      description: null,
+    });
+  });
+
+  it("answers 400 for an invoice left without an item", async () => {
+    const { propertyId } = await createProperty();
+    const invoice = await createInvoice((await createJob(propertyId)).id);
+
+    const res = await api.patch(`/invoices/${invoice.id}`, { item: null });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({
+      error: { code: "validation_error", issues: [{ path: "item" }] },
+    });
   });
 
   it("switches the discount form, clearing the other one", async () => {
@@ -954,7 +997,7 @@ describe("POST /invoices/:id/refresh", () => {
     const invoice = await invoices.createInvoice(organizationId, {
       jobId,
       issueDate: "2026-10-16",
-      description: "Regular cleaning",
+      item: "Regular cleaning",
     });
     if (invoice === undefined) {
       throw new Error("Expected the invoice to be created");

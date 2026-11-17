@@ -27,9 +27,12 @@ describe("formatting", () => {
     expect(escape(`<b>"Jane" & Co</b>`)).toBe(
       "&lt;b&gt;&quot;Jane&quot; &amp; Co&lt;/b&gt;",
     );
-    expect(page({ description: "<script>alert(1)</script>" })).not.toContain(
-      "<script>",
-    );
+    expect(
+      page({
+        item: "<script>alert(1)</script>",
+        description: "<script>alert(2)</script>",
+      }),
+    ).not.toContain("<script>");
   });
 });
 
@@ -50,8 +53,12 @@ describe("invoiceHtml", () => {
       "<td>134</td>",
       "October 16, 2026",
       "On receipt",
-      "Regular cleaning",
-      "October 14, 2026",
+      // The day of the visit is a fact of the invoice, not part of its line.
+      "<tr><th>Service date</th><td>October 14, 2026</td></tr>",
+      "<th>Items</th>",
+      "<th>Description</th>",
+      "<td>Regular cleaning</td>",
+      "<td>Kitchen and two bathrooms</td>",
       "2.5h",
       "$45.00",
       "$112.50",
@@ -59,9 +66,17 @@ describe("invoiceHtml", () => {
     ]) {
       expect(html).toContain(text);
     }
+    expect(html).not.toContain("<th>Date</th>");
     expect(html).not.toContain("Discount");
     expect(html).not.toContain("Paid");
     expect(html).not.toContain("<img");
+  });
+
+  it("leaves the description empty when the invoice has none", () => {
+    const html = page({ description: null });
+
+    expect(html).toMatch(/<td>Regular cleaning<\/td>\s*<td><\/td>/);
+    expect(html).not.toContain("null");
   });
 
   it("prints a fixed price as one unit", () => {

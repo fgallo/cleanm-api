@@ -215,7 +215,7 @@ describe("GET /revenue", () => {
     const invoice = await invoices.createInvoice(organizationId, {
       jobId: job?.id ?? "",
       issueDate: "2026-10-14",
-      description: "Regular cleaning",
+      item: "Regular cleaning",
     });
     await payments.createPayment(organizationId, invoice?.id ?? "", {
       paidOn: "2026-10-14",

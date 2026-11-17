@@ -12,7 +12,10 @@ export type Invoice = {
   issueDate: string; // YYYY-MM-DD
   // Null means due on receipt.
   dueDate: string | null;
-  description: string;
+  // The line the invoice prints: what it is for, and what may be written
+  // next to it.
+  item: string;
+  description: string | null;
   serviceDate: string; // YYYY-MM-DD
   // Copied from the job when the invoice was created, edited on the invoice
   // since. When fixedPriceCents is null, the subtotal is hourly rate x
@@ -95,7 +98,8 @@ export type NewInvoice = {
   jobId: string;
   issueDate: string;
   dueDate?: string | null;
-  description: string;
+  item: string;
+  description?: string | null;
   fixedDiscountCents?: number | null;
   discountBasisPoints?: number | null;
   discountDescription?: string | null;
@@ -108,7 +112,8 @@ export type InvoicePatch = Partial<{
   issueDate: string;
   dueDate: string | null;
   serviceDate: string;
-  description: string;
+  item: string;
+  description: string | null;
   durationMinutes: number;
   hourlyRateCents: number;
   fixedPriceCents: number | null;
@@ -122,6 +127,7 @@ const patchableColumns: Record<keyof InvoicePatch, string> = {
   issueDate: "issue_date",
   dueDate: "due_date",
   serviceDate: "service_date",
+  item: "item",
   description: "description",
   durationMinutes: "duration_minutes",
   hourlyRateCents: "hourly_rate_cents",
@@ -190,6 +196,7 @@ const columns = `
   i.number,
   i.issue_date AS "issueDate",
   i.due_date AS "dueDate",
+  i.item,
   i.description,
   i.service_date AS "serviceDate",
   i.duration_minutes AS "durationMinutes",
@@ -374,18 +381,18 @@ export async function createInvoice(
        inserted AS (
          INSERT INTO invoices (
            organization_id, job_id, number, issue_date, due_date,
-           description, service_date, duration_minutes, hourly_rate_cents,
-           fixed_price_cents, fixed_discount_cents, discount_basis_points,
-           discount_description, tax_name, tax_rate_basis_points,
-           tax_registration_number, notes,
+           item, description, service_date, duration_minutes,
+           hourly_rate_cents, fixed_price_cents, fixed_discount_cents,
+           discount_basis_points, discount_description, tax_name,
+           tax_rate_basis_points, tax_registration_number, notes,
            ${names(billToSources)},
            ${names(issuerSources)}
          )
          SELECT job.organization_id, job.id, numbered.number, $3, $4, $5,
-                job.scheduled_date, job.duration_minutes,
-                job.hourly_rate_cents, job.fixed_price_cents, $6, $7, $8,
+                $6, job.scheduled_date, job.duration_minutes,
+                job.hourly_rate_cents, job.fixed_price_cents, $7, $8, $9,
                 numbered.tax_name, numbered.tax_rate_basis_points,
-                numbered.tax_registration_number, $9,
+                numbered.tax_registration_number, $10,
                 ${names(billToSources, "job.")},
                 ${names(issuerSources, "numbered.")}
          FROM job, numbered
@@ -397,7 +404,8 @@ export async function createInvoice(
         input.jobId,
         input.issueDate,
         input.dueDate ?? null,
-        input.description,
+        input.item,
+        input.description ?? null,
         input.fixedDiscountCents ?? null,
         input.discountBasisPoints ?? null,
         input.discountDescription ?? null,

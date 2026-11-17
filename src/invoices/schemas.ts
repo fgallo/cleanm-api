@@ -11,7 +11,11 @@ const invoiceFields = {
   // because in a PATCH either date may be the stored one.
   dueDate: z.iso.date().nullable(),
   serviceDate: z.iso.date(),
-  description: text(500),
+  // What the invoice is for, as it prints: a kind of cleaning or anything
+  // else.
+  item: text(500),
+  // Printed next to the item; null prints nothing there.
+  description: text(500).nullable(),
   durationMinutes: z
     .int()
     .positive()
@@ -47,12 +51,13 @@ const oneDiscountFormIssue = {
 
 // The pricing comes from the job; the dates, the line, the discount and the
 // notes can be given up front. issueDate defaults to today on the
-// organization's calendar, description to the kind of cleaning.
+// organization's calendar, item to the kind of cleaning.
 export const createInvoiceSchema = z
   .object({
     jobId: z.uuid(),
     issueDate: invoiceFields.issueDate.optional(),
     dueDate: invoiceFields.dueDate.optional(),
+    item: invoiceFields.item.optional(),
     description: invoiceFields.description.optional(),
     fixedDiscountCents: invoiceFields.fixedDiscountCents.optional(),
     discountBasisPoints: invoiceFields.discountBasisPoints.optional(),

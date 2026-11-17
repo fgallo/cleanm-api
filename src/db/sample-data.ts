@@ -9,7 +9,7 @@
 // the organization's calendar, so the calendar is full whenever this runs.
 import * as clients from "../clients/repository.ts";
 import * as helpers from "../helpers/repository.ts";
-import { defaultDescription } from "../invoices/description.ts";
+import { defaultItem } from "../invoices/item.ts";
 import * as invoices from "../invoices/repository.ts";
 import * as jobs from "../jobs/repository.ts";
 import type { Job, JobPatch, JobStatus } from "../jobs/repository.ts";
@@ -687,7 +687,7 @@ async function invoiceAndPay(
         jobId: job.id,
         issueDate: job.scheduledDate,
         dueDate: addDays(job.scheduledDate, dueDays),
-        description: defaultDescription(job.serviceType),
+        item: defaultItem(job.serviceType),
         fixedDiscountCents: discount?.fixedCents,
         discountBasisPoints: discount?.basisPoints,
         discountDescription: discount?.description,
