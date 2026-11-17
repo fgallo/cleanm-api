@@ -74,10 +74,19 @@ multi-tenant signup and billing.
 - Invoicing: one invoice per visit, generated before or after it (a job that
   is `scheduled` or `completed`). The owner sometimes edits an invoice's date,
   line or amount after generating it, and the number stays (confirmed
-  2026-10-16): no draft or void states. Only until it is paid in full
+  2026-10-16): no draft or void states. The line is an item and an optional
+  description next to it (decided 2026-11-16, so that the owner types as
+  little as possible): the item is the kind of cleaning unless another is
+  picked or written, and the day of the visit prints with the invoice's
+  dates, not on the line. Only until it is paid in full
   (decided 2026-11-14): an invoice whose payments cover its total is locked,
   and the API refuses to edit it. The payments stay editable, and changing
   them is the deliberate way to open the invoice again.
+- Service types are the four of the first business for now (`service_type`
+  on jobs and series: regular, deep, move-in, move-out). Decided on
+  2026-11-16: they become a catalog per organization (roadmap step 8), so
+  that another business offers its own. An invoice keeps the item it
+  printed, so renaming or retiring a service later changes no invoice.
 - Helper pay (confirmed 2026-11-14): a helper has a usual hourly rate
   (`helpers.hourly_rate_cents`), and some visits pay a different one. A job,
   and a series as the template of its jobs, carries a rate of its own only
@@ -371,6 +380,12 @@ definition of done.
 5. **Jobs and recurrence.**
 6. **Authentication.** Nothing is deployed before this step.
 7. **Invoices and revenue queries.**
+8. **Services per organization.** A `services` table (the name as it prints,
+   an order, `active` in place of a delete, as with helpers) replaces the
+   fixed service types on jobs and recurring series, seeded with the four
+   of the first business; the clients list them wherever a service is
+   picked, and the list is edited with the organization's settings. After
+   the web client's invoices.
 
 ## 7. Git workflow
 
