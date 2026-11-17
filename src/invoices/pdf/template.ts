@@ -147,6 +147,7 @@ export function invoiceHtml({ invoice, logo }: InvoicePage): string {
     <table class="facts">
       <tr><th>Invoice number</th><td>${invoice.number}</td></tr>
       <tr><th>Invoice date</th><td>${formatDate(invoice.issueDate)}</td></tr>
+      <tr><th>Service date</th><td>${formatDate(invoice.serviceDate)}</td></tr>
       <tr><th>Payment due</th><td>${invoice.dueDate === null ? "On receipt" : formatDate(invoice.dueDate)}</td></tr>
       <tr class="due"><th>Amount due (${currency})</th><td>${formatMoney(invoice.amountDueCents)}</td></tr>
     </table>
@@ -155,8 +156,8 @@ export function invoiceHtml({ invoice, logo }: InvoicePage): string {
   <table class="items">
     <thead>
       <tr>
+        <th>Items</th>
         <th>Description</th>
-        <th>Date</th>
         <th class="num">Quantity</th>
         <th class="num">Price</th>
         <th class="num">Amount</th>
@@ -164,8 +165,8 @@ export function invoiceHtml({ invoice, logo }: InvoicePage): string {
     </thead>
     <tbody>
       <tr>
-        <td>${escape(invoice.description)}</td>
-        <td>${formatDate(invoice.serviceDate)}</td>
+        <td>${escape(invoice.item)}</td>
+        <td>${invoice.description === null ? "" : escape(invoice.description)}</td>
         <td class="num">${line.quantity}${line.unit}</td>
         <td class="num">${line.price}</td>
         <td class="num">${formatMoney(invoice.subtotalCents)}</td>

@@ -7,7 +7,7 @@ import {
 } from "../http/errors.ts";
 import * as jobs from "../jobs/repository.ts";
 import * as organizations from "../organizations/repository.ts";
-import { defaultDescription } from "./description.ts";
+import { defaultItem } from "./item.ts";
 import { renderPdf } from "./pdf/render.ts";
 import { invoiceHtml } from "./pdf/template.ts";
 import * as invoices from "./repository.ts";
@@ -51,7 +51,8 @@ invoicesRouter.post("/", async (req, res) => {
     jobId: job.id,
     issueDate,
     dueDate: input.dueDate,
-    description: input.description ?? defaultDescription(job.serviceType),
+    item: input.item ?? defaultItem(job.serviceType),
+    description: input.description,
     fixedDiscountCents: input.fixedDiscountCents,
     discountBasisPoints: input.discountBasisPoints,
     discountDescription: input.discountDescription,

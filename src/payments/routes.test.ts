@@ -119,7 +119,7 @@ async function createInvoiceElsewhere(): Promise<{
   const invoice = await invoices.createInvoice(organizationId, {
     jobId: job.id,
     issueDate: "2026-10-16",
-    description: "Regular cleaning",
+    item: "Regular cleaning",
   });
   if (invoice === undefined) {
     throw new Error("Expected the invoice to be created");
