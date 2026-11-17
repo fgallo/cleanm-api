@@ -273,15 +273,17 @@ then on: editing the job, the client, the property or the organization later
 never changes an invoice. `number` is sequential per organization and
 assigned at creation. Optional on creation: `issueDate` (default: today on
 the organization's calendar), `dueDate` (`null` means due on receipt),
-`description` (default: the kind of cleaning, such as "Regular cleaning"), a
-discount as either `fixedDiscountCents` or `discountBasisPoints` (1000 is
-10%; not both) with a `discountDescription` printed next to it (such as
-"Referral for 1 cleaning"), and `notes`. `subtotalCents` (the fixed price,
-otherwise hourly rate × duration), `discountCents`, `taxCents` (on the
-discounted subtotal) and `totalCents` are derived.
+`item` (what the invoice is for; default: the kind of cleaning, such as
+"Regular cleaning"), `description` (printed next to the item; `null`, the
+default, prints nothing), a discount as either `fixedDiscountCents` or
+`discountBasisPoints` (1000 is 10%; not both) with a `discountDescription`
+printed next to it (such as "Referral for 1 cleaning"), and `notes`.
+`subtotalCents` (the fixed price, otherwise hourly rate × duration),
+`discountCents`, `taxCents` (on the discounted subtotal) and `totalCents`
+are derived.
 
 The owner edits the invoice itself: `PATCH` takes `issueDate`, `dueDate`,
-`serviceDate`, `description`, `durationMinutes`, `hourlyRateCents`,
+`serviceDate`, `item`, `description`, `durationMinutes`, `hourlyRateCents`,
 `fixedPriceCents`, `fixedDiscountCents`, `discountBasisPoints`,
 `discountDescription` and `notes`, and the amounts follow; the tax is not
 editable. Setting one form of discount clears the other. `dueDate` must not
