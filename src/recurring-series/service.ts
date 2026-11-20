@@ -1,6 +1,8 @@
 // Business rules of recurring series: when jobs are generated, what a change
 // to a series does to the jobs it already generated, and when a series can be
 // deleted. The repository only knows SQL.
+import { assertAssignable } from "../helpers/assignable.ts";
+import { assignmentsOf, sameAssignments } from "../helpers/assigned.ts";
 import { ConflictError, ValidationError } from "../http/errors.ts";
 import * as organizations from "../organizations/repository.ts";
 import { addDays, occurrences } from "./occurrences.ts";
@@ -45,6 +47,7 @@ export async function createSeries(
   organizationId: string,
   input: NewRecurringSeries,
 ): Promise<RecurringSeries | undefined> {
+  await assertAssignable(organizationId, input.helpers);
   const created = await series.createSeries(organizationId, input);
   if (created === undefined) {
     return undefined;
@@ -62,6 +65,12 @@ export async function updateSeries(
   if (before === undefined) {
     return undefined;
   }
+  const helpersBefore = assignmentsOf(before.helpers);
+  await assertAssignable(
+    organizationId,
+    patch.helpers,
+    helpersBefore.map((assignment) => assignment.helperId),
+  );
   if (patch.endDate !== undefined && patch.endDate !== null) {
     if (patch.endDate < before.startDate) {
       throw new ValidationError([
@@ -90,6 +99,18 @@ export async function updateSeries(
     today,
     templateChanges(before, patch),
   );
+  if (
+    patch.helpers !== undefined &&
+    !sameAssignments(helpersBefore, patch.helpers)
+  ) {
+    await series.propagateHelpers(
+      organizationId,
+      id,
+      today,
+      helpersBefore,
+      patch.helpers,
+    );
+  }
   if (patch.endDate === null) {
     // Reopened: generation resumes after the old end.
     await materialize(organizationId);
@@ -97,25 +118,24 @@ export async function updateSeries(
   return series.findSeries(organizationId, id);
 }
 
-// The template fields of the patch, with the value the jobs had before.
+// The template fields of the patch, with the value the jobs had before. The
+// helpers are not among them: they change together (`propagateHelpers`).
 function templateChanges(
   before: RecurringSeries,
   patch: RecurringSeriesPatch,
 ): series.TemplateChange[] {
-  const previous: Record<keyof series.JobTemplate, unknown> = {
+  const previous: Record<series.TemplateColumn, unknown> = {
     startTime: before.startTime,
     durationMinutes: before.durationMinutes,
     serviceType: before.serviceType,
     hourlyRateCents: before.hourlyRateCents,
     fixedPriceCents: before.fixedPriceCents,
-    helperId: before.helper?.id ?? null,
-    helperHourlyRateCents: before.helperHourlyRateCents,
     notes: before.notes,
   };
   const changes: series.TemplateChange[] = [];
-  for (const key of Object.keys(series.templateColumns) as Array<
-    keyof series.JobTemplate
-  >) {
+  for (const key of Object.keys(
+    series.templateColumns,
+  ) as series.TemplateColumn[]) {
     const to = patch[key];
     if (to !== undefined && to !== previous[key]) {
       changes.push({

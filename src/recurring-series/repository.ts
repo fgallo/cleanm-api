@@ -1,5 +1,14 @@
 import { buildSetClause } from "../db/patch.ts";
 import { pool } from "../db/pool.ts";
+import {
+  assignedHelpersColumn,
+  assignHelpers,
+  assignmentArrays,
+  jobHelpers,
+  seriesHelpers,
+  unassignOtherHelpers,
+} from "../helpers/assigned.ts";
+import type { AssignedHelper, HelperAssignment } from "../helpers/assigned.ts";
 import type { ServiceType } from "../jobs/repository.ts";
 
 export type RecurringSeries = {
@@ -29,11 +38,9 @@ export type RecurringSeries = {
     notes: string | null;
   };
   client: { id: string; name: string };
-  // hourlyRateCents is the helper's usual rate (see Job).
-  helper: { id: string; name: string; hourlyRateCents: number | null } | null;
-  // The rate the generated jobs pay their helper when it is not the usual
-  // one.
-  helperHourlyRateCents: number | null;
+  // The helpers the jobs are generated with, each at the rate those jobs pay
+  // them when it is not their usual one (see Job).
+  helpers: AssignedHelper[];
   createdAt: Date;
   updatedAt: Date;
 };
@@ -44,10 +51,12 @@ export type JobTemplate = {
   serviceType: ServiceType;
   hourlyRateCents: number;
   fixedPriceCents?: number | null;
-  helperId?: string | null;
-  helperHourlyRateCents?: number | null;
+  helpers?: HelperAssignment[];
   notes?: string | null;
 };
+
+// The helpers are not a column: they are rows of their own.
+export type TemplateColumn = Exclude<keyof JobTemplate, "helpers">;
 
 export type NewRecurringSeries = JobTemplate & {
   propertyId: string;
@@ -57,24 +66,23 @@ export type NewRecurringSeries = JobTemplate & {
   endDate?: string | null;
 };
 
-// Only the keys present are updated; null clears a field. The rule and the
-// property are fixed: to change them, end the series and create another.
+// Only the keys present are updated; null clears a field, and `helpers`
+// replaces the helpers the series had. The rule and the property are fixed:
+// to change them, end the series and create another.
 export type RecurringSeriesPatch = Partial<JobTemplate> & {
   endDate?: string | null;
 };
 
-export const templateColumns: Record<keyof JobTemplate, string> = {
+export const templateColumns: Record<TemplateColumn, string> = {
   startTime: "start_time",
   durationMinutes: "duration_minutes",
   serviceType: "service_type",
   hourlyRateCents: "hourly_rate_cents",
   fixedPriceCents: "fixed_price_cents",
-  helperId: "helper_id",
-  helperHourlyRateCents: "helper_hourly_rate_cents",
   notes: "notes",
 };
 
-const patchableColumns: Record<keyof RecurringSeriesPatch, string> = {
+const patchableColumns: Record<TemplateColumn | "endDate", string> = {
   ...templateColumns,
   endDate: "end_date",
 };
@@ -103,14 +111,7 @@ const columns = `
     'notes', p.notes
   ) AS property,
   json_build_object('id', c.id, 'name', c.name) AS client,
-  CASE WHEN h.id IS NULL THEN NULL
-       ELSE json_build_object(
-         'id', h.id,
-         'name', h.name,
-         'hourlyRateCents', h.hourly_rate_cents
-       )
-  END AS helper,
-  s.helper_hourly_rate_cents AS "helperHourlyRateCents",
+  ${assignedHelpersColumn(seriesHelpers, "s")},
   s.created_at AS "createdAt",
   s.updated_at AS "updatedAt"
 `;
@@ -120,8 +121,6 @@ const joins = `
     ON p.organization_id = s.organization_id AND p.id = s.property_id
   JOIN clients c
     ON c.organization_id = p.organization_id AND c.id = p.client_id
-  LEFT JOIN helpers h
-    ON h.organization_id = s.organization_id AND h.id = s.helper_id
 `;
 
 export async function listSeries(
@@ -149,25 +148,26 @@ export async function findSeries(
 }
 
 // Returns undefined when the property does not exist in the organization.
+// The series and its helpers are written by one statement, which cannot read
+// back the helpers it wrote: the series is read once it is there.
 export async function createSeries(
   organizationId: string,
   input: NewRecurringSeries,
 ): Promise<RecurringSeries | undefined> {
-  const { rows } = await pool.query<RecurringSeries>(
+  const { rows } = await pool.query<{ id: string }>(
     `WITH inserted AS (
        INSERT INTO recurring_series (
          organization_id, property_id, every_weeks, day_of_month, start_date,
          end_date, start_time, duration_minutes, service_type,
-         hourly_rate_cents, fixed_price_cents, helper_id,
-         helper_hourly_rate_cents, notes
+         hourly_rate_cents, fixed_price_cents, notes
        )
-       SELECT organization_id, id, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-              $13, $14
+       SELECT organization_id, id, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
        FROM properties
        WHERE organization_id = $1 AND id = $2
-       RETURNING *
-     )
-     SELECT ${columns} FROM inserted s ${joins}`,
+       RETURNING organization_id, id
+     ),
+     ${assignHelpers(seriesHelpers, "inserted", "$13", "$14")}
+     SELECT id FROM inserted`,
     [
       organizationId,
       input.propertyId,
@@ -180,12 +180,14 @@ export async function createSeries(
       input.serviceType,
       input.hourlyRateCents,
       input.fixedPriceCents ?? null,
-      input.helperId ?? null,
-      input.helperHourlyRateCents ?? null,
       input.notes ?? null,
+      ...assignmentArrays(input.helpers ?? []),
     ],
   );
-  return rows[0];
+  const created = rows[0];
+  return created === undefined
+    ? undefined
+    : findSeries(organizationId, created.id);
 }
 
 // A patch that sets end_date ends the series in the same statement: it
@@ -199,18 +201,21 @@ export async function updateSeries(
   patch: RecurringSeriesPatch,
 ): Promise<RecurringSeries | undefined> {
   const set = buildSetClause(patch, patchableColumns, 3);
-  if (set.values.length === 0) {
+  if (set.values.length === 0 && patch.helpers === undefined) {
     return findSeries(organizationId, id);
   }
   const values = [organizationId, id, ...set.values];
+  // A patch of the helpers alone still changes the series.
+  const assignments = [set.assignments];
 
   const ending = patch.endDate !== undefined && patch.endDate !== null;
-  let pullBack = "";
   let trimmed = "";
   if (ending) {
     values.push(patch.endDate);
     // The new end is a parameter: inside SET, end_date is still the old one.
-    pullBack = `generated_until = LEAST(generated_until, $${values.length}),`;
+    assignments.push(
+      `generated_until = LEAST(generated_until, $${values.length})`,
+    );
     trimmed = `,
      trimmed AS (
        DELETE FROM jobs
@@ -222,17 +227,28 @@ export async function updateSeries(
      )`;
   }
 
-  const { rows } = await pool.query<RecurringSeries>(
+  let helpers = "";
+  if (patch.helpers !== undefined) {
+    values.push(...assignmentArrays(patch.helpers));
+    const ids = `$${values.length - 1}`;
+    const rates = `$${values.length}`;
+    helpers = `,
+     ${unassignOtherHelpers(seriesHelpers, "updated", ids)},
+     ${assignHelpers(seriesHelpers, "updated", ids, rates)}`;
+  }
+
+  assignments.push("updated_at = now()");
+  const { rows } = await pool.query<{ id: string }>(
     `WITH updated AS (
        UPDATE recurring_series
-       SET ${set.assignments}, ${pullBack} updated_at = now()
+       SET ${assignments.filter((assignment) => assignment !== "").join(", ")}
        WHERE organization_id = $1 AND id = $2
-       RETURNING *
-     )${trimmed}
-     SELECT ${columns} FROM updated s ${joins}`,
+       RETURNING organization_id, id, end_date
+     )${trimmed}${helpers}
+     SELECT id FROM updated`,
     values,
   );
-  return rows[0];
+  return rows[0] === undefined ? undefined : findSeries(organizationId, id);
 }
 
 // Deletes the series together with its jobs, in one statement so the foreign
@@ -285,10 +301,11 @@ export async function listSeriesToGenerate(
   return rows;
 }
 
-// Creates the jobs for the given dates from the series template and moves
-// generated_until forward, in one statement. The UPDATE only matches when
-// generated_until is still what the caller saw, so two concurrent callers
-// cannot both insert the same dates: the second one updates nothing.
+// Creates the jobs for the given dates from the series template, with the
+// helpers of the series, and moves generated_until forward, in one statement.
+// The UPDATE only matches when generated_until is still what the caller saw,
+// so two concurrent callers cannot both insert the same dates: the second
+// one updates nothing. Returns how many jobs were created.
 export async function generateJobs(
   organizationId: string,
   seriesId: string,
@@ -296,27 +313,40 @@ export async function generateJobs(
   dates: string[],
   until: string,
 ): Promise<number> {
-  const { rowCount } = await pool.query(
+  const { rows } = await pool.query<{ jobs: number }>(
     `WITH claimed AS (
        UPDATE recurring_series
        SET generated_until = $4
        WHERE organization_id = $1 AND id = $2
          AND generated_until IS NOT DISTINCT FROM $3
        RETURNING *
+     ),
+     created AS (
+       INSERT INTO jobs (
+         organization_id, property_id, recurring_series_id, scheduled_date,
+         start_time, duration_minutes, service_type, hourly_rate_cents,
+         fixed_price_cents, notes
+       )
+       SELECT s.organization_id, s.property_id, s.id, d.date, s.start_time,
+              s.duration_minutes, s.service_type, s.hourly_rate_cents,
+              s.fixed_price_cents, s.notes
+       FROM claimed s, unnest($5::date[]) AS d(date)
+       RETURNING organization_id, id, recurring_series_id
+     ),
+     assigned AS (
+       INSERT INTO ${jobHelpers.table} (
+         organization_id, ${jobHelpers.key}, helper_id, hourly_rate_cents
+       )
+       SELECT c.organization_id, c.id, a.helper_id, a.hourly_rate_cents
+       FROM created c
+       JOIN ${seriesHelpers.table} a
+         ON a.organization_id = c.organization_id
+        AND a.${seriesHelpers.key} = c.recurring_series_id
      )
-     INSERT INTO jobs (
-       organization_id, property_id, helper_id, helper_hourly_rate_cents,
-       recurring_series_id, scheduled_date, start_time, duration_minutes,
-       service_type, hourly_rate_cents, fixed_price_cents, notes
-     )
-     SELECT s.organization_id, s.property_id, s.helper_id,
-            s.helper_hourly_rate_cents, s.id, d.date, s.start_time,
-            s.duration_minutes, s.service_type, s.hourly_rate_cents,
-            s.fixed_price_cents, s.notes
-     FROM claimed s, unnest($5::date[]) AS d(date)`,
+     SELECT count(*)::integer AS jobs FROM created`,
     [organizationId, seriesId, seenGeneratedUntil, until, dates],
   );
-  return rowCount ?? 0;
+  return rows[0]?.jobs ?? 0;
 }
 
 // --- Propagation to upcoming jobs ----------------------------------------
@@ -361,6 +391,57 @@ export async function propagateTemplate(
        AND status IN ('scheduled', 'estimated')
        AND (${touched.join(" OR ")})`,
     values,
+  );
+  return rowCount ?? 0;
+}
+
+// The same for the helpers, which change together: the upcoming, not yet
+// realized jobs that still had the helpers the series had, each at the same
+// rate, get the helpers it has now. A visit whose helpers were changed by
+// hand keeps them.
+export async function propagateHelpers(
+  organizationId: string,
+  seriesId: string,
+  today: string,
+  from: HelperAssignment[],
+  to: HelperAssignment[],
+): Promise<number> {
+  const { rowCount } = await pool.query(
+    `WITH matching AS (
+       SELECT j.organization_id, j.id
+       FROM jobs j
+       WHERE j.organization_id = $1 AND j.recurring_series_id = $2
+         AND j.scheduled_date >= $3
+         AND j.status IN ('scheduled', 'estimated')
+         -- Nothing on one side that is not on the other.
+         AND NOT EXISTS (
+           (SELECT a.helper_id, a.hourly_rate_cents
+            FROM job_helpers a
+            WHERE a.organization_id = j.organization_id AND a.job_id = j.id
+            EXCEPT
+            SELECT * FROM unnest($4::uuid[], $5::integer[]))
+           UNION ALL
+           (SELECT * FROM unnest($4::uuid[], $5::integer[])
+            EXCEPT
+            SELECT a.helper_id, a.hourly_rate_cents
+            FROM job_helpers a
+            WHERE a.organization_id = j.organization_id AND a.job_id = j.id)
+         )
+     ),
+     ${unassignOtherHelpers(jobHelpers, "matching", "$6")},
+     ${assignHelpers(jobHelpers, "matching", "$6", "$7")}
+     UPDATE jobs
+     SET updated_at = now()
+     FROM matching
+     WHERE jobs.organization_id = matching.organization_id
+       AND jobs.id = matching.id`,
+    [
+      organizationId,
+      seriesId,
+      today,
+      ...assignmentArrays(from),
+      ...assignmentArrays(to),
+    ],
   );
   return rowCount ?? 0;
 }

@@ -32,12 +32,13 @@ async function createHelper(input: object = {}): Promise<HelperBody> {
   return res.body;
 }
 
-// A job of the helper on the given day; `input` may give the job a helper
-// rate of its own.
+// A job of the helper on the given day, at a rate of its own when one is
+// given, with the other helpers listed.
 async function createJobOf(
   helperId: string,
   scheduledDate: string,
-  input: object = {},
+  hourlyRateCents: number | null = null,
+  others: string[] = [],
 ): Promise<string> {
   const client = await api.post<{ id: string }>("/clients", {
     name: "Jane Doe",
@@ -53,26 +54,37 @@ async function createJobOf(
   );
   const job = await api.post<{ id: string }>("/jobs", {
     propertyId: property.body.id,
-    helperId,
+    helpers: [
+      { helperId, hourlyRateCents },
+      ...others.map((other) => ({ helperId: other })),
+    ],
     scheduledDate,
     startTime: "09:00",
     durationMinutes: 60,
     serviceType: "regular",
     hourlyRateCents: 4500,
-    ...input,
   });
   expect(job.status).toBe(201);
   return job.body.id;
 }
 
-// The helper rate each job carries itself; null is the helper's usual rate.
-async function ownRatesOf(...jobIds: string[]): Promise<Array<number | null>> {
-  const rates: Array<number | null> = [];
+// The rate each job carries itself for the helper; null is their usual rate.
+async function ownRatesOf(
+  helperId: string,
+  ...jobIds: string[]
+): Promise<Array<number | null | undefined>> {
+  const rates: Array<number | null | undefined> = [];
   for (const id of jobIds) {
-    const job = await api.get<{ helperHourlyRateCents: number | null }>(
-      `/jobs/${id}`,
+    const job = await api.get<{
+      helpers: Array<{
+        helper: { id: string };
+        hourlyRateCents: number | null;
+      }>;
+    }>(`/jobs/${id}`);
+    rates.push(
+      job.body.helpers.find((assigned) => assigned.helper.id === helperId)
+        ?.hourlyRateCents,
     );
-    rates.push(job.body.helperHourlyRateCents);
   }
   return rates;
 }
@@ -237,9 +249,7 @@ describe("PATCH /helpers/:id", () => {
   it("keeps the previous rate on the jobs before today that had none of their own", async () => {
     const helper = await createHelper({ hourlyRateCents: 2200 });
     const past = await createJobOf(helper.id, "2020-01-15");
-    const pastWithOwnRate = await createJobOf(helper.id, "2020-01-16", {
-      helperHourlyRateCents: 2500,
-    });
+    const pastWithOwnRate = await createJobOf(helper.id, "2020-01-16", 2500);
     const todays = await createJobOf(helper.id, today);
     const upcoming = await createJobOf(helper.id, "2099-01-15");
 
@@ -250,12 +260,20 @@ describe("PATCH /helpers/:id", () => {
     expect(res.body).toMatchObject({ hourlyRateCents: 2400 });
     // The work already done stays at 22.00; from today on, the new usual
     // rate applies.
-    expect(await ownRatesOf(past, pastWithOwnRate, todays, upcoming)).toEqual([
-      2200,
-      2500,
-      null,
-      null,
-    ]);
+    expect(
+      await ownRatesOf(helper.id, past, pastWithOwnRate, todays, upcoming),
+    ).toEqual([2200, 2500, null, null]);
+  });
+
+  it("keeps the previous rate for that helper only, on a job done by two", async () => {
+    const helper = await createHelper({ hourlyRateCents: 2200 });
+    const other = await createHelper({ name: "Zoe", hourlyRateCents: 2000 });
+    const past = await createJobOf(helper.id, "2020-01-15", null, [other.id]);
+
+    await api.patch(`/helpers/${helper.id}`, { hourlyRateCents: 2400 });
+
+    expect(await ownRatesOf(helper.id, past)).toEqual([2200]);
+    expect(await ownRatesOf(other.id, past)).toEqual([null]);
   });
 
   it("keeps the previous rate on past jobs when the rate is cleared", async () => {
@@ -264,7 +282,7 @@ describe("PATCH /helpers/:id", () => {
 
     await api.patch(`/helpers/${helper.id}`, { hourlyRateCents: null });
 
-    expect(await ownRatesOf(past)).toEqual([2200]);
+    expect(await ownRatesOf(helper.id, past)).toEqual([2200]);
   });
 
   it("leaves past jobs alone when the rate does not change", async () => {
@@ -278,7 +296,8 @@ describe("PATCH /helpers/:id", () => {
     // Another helper's raise is not this one's.
     await api.patch(`/helpers/${others.id}`, { hourlyRateCents: 2400 });
 
-    expect(await ownRatesOf(past, othersPast)).toEqual([null, 2200]);
+    expect(await ownRatesOf(helper.id, past)).toEqual([null]);
+    expect(await ownRatesOf(others.id, othersPast)).toEqual([2200]);
   });
 
   it("answers 400 when active is not a boolean", async () => {
@@ -331,7 +350,7 @@ describe("DELETE /helpers/:id", () => {
     );
     const job = await api.post("/jobs", {
       propertyId: property.body.id,
-      helperId: helper.id,
+      helpers: [{ helperId: helper.id }],
       scheduledDate: "2026-10-14",
       startTime: "09:00",
       durationMinutes: 60,
@@ -348,6 +367,46 @@ describe("DELETE /helpers/:id", () => {
         error: {
           code: "conflict",
           message: "Cannot delete: still referenced by jobs",
+        },
+      },
+    });
+  });
+
+  it("answers 409 when a series is to generate its jobs with the helper", async () => {
+    const helper = await createHelper();
+    const client = await api.post<{ id: string }>("/clients", {
+      name: "Jane Doe",
+    });
+    const property = await api.post<{ id: string }>(
+      `/clients/${client.body.id}/properties`,
+      {
+        addressLine1: "123 Example St",
+        city: "Toronto",
+        province: "ON",
+        postalCode: "M5V 0A1",
+      },
+    );
+    // Too far ahead to have a job yet: only the series has the helper.
+    const series = await api.post("/recurring-series", {
+      propertyId: property.body.id,
+      helpers: [{ helperId: helper.id }],
+      everyWeeks: 1,
+      startDate: "2099-01-15",
+      startTime: "09:00",
+      durationMinutes: 60,
+      serviceType: "regular",
+      hourlyRateCents: 4500,
+    });
+    expect(series.status).toBe(201);
+
+    const res = await api.delete(`/helpers/${helper.id}`);
+
+    expect(res).toEqual({
+      status: 409,
+      body: {
+        error: {
+          code: "conflict",
+          message: "Cannot delete: still referenced by recurring_series",
         },
       },
     });

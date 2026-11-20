@@ -23,7 +23,7 @@ jobsRouter.get("/", async (req, res) => {
 
 jobsRouter.post("/", async (req, res) => {
   const input = createJobSchema.parse(req.body);
-  await assertAssignable(res.locals.organizationId, input.helperId);
+  await assertAssignable(res.locals.organizationId, input.helpers);
   const job = await jobs.createJob(res.locals.organizationId, input);
   if (job === undefined) {
     throw new ValidationError([
@@ -45,7 +45,18 @@ jobsRouter.get("/:id", async (req, res) => {
 jobsRouter.patch("/:id", async (req, res) => {
   const { id } = jobIdSchema.parse(req.params);
   const patch = updateJobSchema.parse(req.body);
-  await assertAssignable(res.locals.organizationId, patch.helperId);
+  if (patch.helpers !== undefined) {
+    // The helpers the job has are what the new list is checked against.
+    const current = await jobs.findJob(res.locals.organizationId, id);
+    if (current === undefined) {
+      throw new NotFoundError("Job not found");
+    }
+    await assertAssignable(
+      res.locals.organizationId,
+      patch.helpers,
+      current.helpers.map((assigned) => assigned.helper.id),
+    );
+  }
   const job = await jobs.updateJob(res.locals.organizationId, id, patch);
   if (job === undefined) {
     throw new NotFoundError("Job not found");

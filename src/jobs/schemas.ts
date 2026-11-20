@@ -5,6 +5,23 @@ import { jobStatuses, serviceTypes } from "./repository.ts";
 const cents = z.int().min(0);
 const notes = z.string().trim().min(1).max(2000).nullable();
 
+// The helpers who do the job. In an update, the list replaces the one the
+// job had, so an empty list leaves nobody assigned.
+const helpers = z
+  .array(
+    z.object({
+      helperId: z.uuid(),
+      // What this helper is paid for an hour of this job when it is not
+      // their usual rate; null means the usual rate.
+      hourlyRateCents: cents.nullable().optional(),
+    }),
+  )
+  .max(20)
+  .refine(
+    (list) => new Set(list.map((item) => item.helperId)).size === list.length,
+    { message: "A helper can be listed only once" },
+  );
+
 // What a job and a recurring series (the template of its jobs) have in common.
 export const jobTemplate = {
   startTime: z.iso.time(),
@@ -16,11 +33,7 @@ export const jobTemplate = {
   hourlyRateCents: cents,
   // null means the price is hourly rate x duration.
   fixedPriceCents: cents.nullable().optional(),
-  // null means nobody is assigned yet.
-  helperId: z.uuid().nullable().optional(),
-  // What the helper is paid for an hour of this job when it is not their
-  // usual rate; null means the usual rate.
-  helperHourlyRateCents: cents.nullable().optional(),
+  helpers: helpers.optional(),
   notes: notes.optional(),
 };
 

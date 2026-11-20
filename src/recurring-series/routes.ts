@@ -1,6 +1,5 @@
 import { Router } from "express";
 
-import { assertAssignable } from "../helpers/assignable.ts";
 import { NotFoundError, ValidationError } from "../http/errors.ts";
 import * as repository from "./repository.ts";
 import {
@@ -18,7 +17,6 @@ recurringSeriesRouter.get("/", async (_req, res) => {
 
 recurringSeriesRouter.post("/", async (req, res) => {
   const input = createRecurringSeriesSchema.parse(req.body);
-  await assertAssignable(res.locals.organizationId, input.helperId);
   const created = await service.createSeries(res.locals.organizationId, input);
   if (created === undefined) {
     throw new ValidationError([
@@ -40,7 +38,6 @@ recurringSeriesRouter.get("/:id", async (req, res) => {
 recurringSeriesRouter.patch("/:id", async (req, res) => {
   const { id } = recurringSeriesIdSchema.parse(req.params);
   const patch = updateRecurringSeriesSchema.parse(req.body);
-  await assertAssignable(res.locals.organizationId, patch.helperId);
   const updated = await service.updateSeries(
     res.locals.organizationId,
     id,

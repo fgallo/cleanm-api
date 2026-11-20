@@ -7,7 +7,7 @@ export type Helper = {
   name: string;
   phone: string | null;
   // What the helper is usually paid for an hour of work; null when not set.
-  // A job may carry its own rate (helperHourlyRateCents on the job).
+  // A job may pay them a rate of its own (see AssignedHelper).
   hourlyRateCents: number | null;
   active: boolean;
   createdAt: Date;
@@ -90,10 +90,10 @@ export async function updateHelper(
   }
   const values = [organizationId, id, ...set.values];
 
-  // A new usual rate is for the work still to come. The jobs before today
-  // that were paid the usual rate (they carry none of their own) get the
-  // previous one written on them, in the same statement, so what the helper
-  // was paid for work already done never changes with a later edit.
+  // A new usual rate is for the work still to come. On the jobs before
+  // today that paid this helper the usual rate (none of their own), the
+  // previous one is written, in the same statement, so what the helper was
+  // paid for work already done never changes with a later edit.
   let keepPastRate = "";
   if (patch.hourlyRateCents !== undefined) {
     values.push(patch.hourlyRateCents);
@@ -105,11 +105,12 @@ export async function updateHelper(
        WHERE h.organization_id = $1 AND h.id = $2
      ),
      kept AS (
-       UPDATE jobs j
-       SET helper_hourly_rate_cents = previous.hourly_rate_cents
-       FROM previous
-       WHERE j.organization_id = $1 AND j.helper_id = $2
-         AND j.helper_hourly_rate_cents IS NULL
+       UPDATE job_helpers a
+       SET hourly_rate_cents = previous.hourly_rate_cents
+       FROM previous, jobs j
+       WHERE a.organization_id = $1 AND a.helper_id = $2
+         AND a.hourly_rate_cents IS NULL
+         AND j.organization_id = a.organization_id AND j.id = a.job_id
          AND j.scheduled_date < previous.today
          AND previous.hourly_rate_cents IS NOT NULL
          AND previous.hourly_rate_cents IS DISTINCT FROM $${values.length}
