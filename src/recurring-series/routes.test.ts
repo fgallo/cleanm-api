@@ -15,6 +15,19 @@ const today = new Date().toLocaleDateString("en-CA", {
 });
 const horizon = addDays(today, 56);
 
+type AssignedHelpers = Array<{
+  helper: { id: string; name: string; hourlyRateCents: number | null };
+  hourlyRateCents: number | null;
+}>;
+
+// Who is assigned and at which rate of their own, without the rest.
+function ratesOf(helpers: AssignedHelpers): Array<[string, number | null]> {
+  return helpers.map((assigned) => [
+    assigned.helper.name,
+    assigned.hourlyRateCents,
+  ]);
+}
+
 type SeriesBody = {
   id: string;
   everyWeeks: number | null;
@@ -30,8 +43,7 @@ type SeriesBody = {
   notes: string | null;
   property: { id: string };
   client: { id: string; name: string };
-  helper: { id: string; name: string; hourlyRateCents: number | null } | null;
-  helperHourlyRateCents: number | null;
+  helpers: AssignedHelpers;
   createdAt: string;
   updatedAt: string;
 };
@@ -45,9 +57,9 @@ type JobBody = {
   hourlyRateCents: number;
   priceCents: number;
   notes: string | null;
-  helper: { id: string; name: string; hourlyRateCents: number | null } | null;
-  helperHourlyRateCents: number | null;
+  helpers: AssignedHelpers;
   recurringSeriesId: string | null;
+  updatedAt: string;
 };
 
 async function createProperty(): Promise<string> {
@@ -109,7 +121,7 @@ describe("POST /recurring-series", () => {
 
     const series = await createSeries({
       everyWeeks: 2,
-      helperId,
+      helpers: [{ helperId }],
       notes: "Side door",
     });
 
@@ -120,7 +132,7 @@ describe("POST /recurring-series", () => {
       endDate: null,
       generatedUntil: horizon,
       startTime: "09:00:00",
-      helper: { id: helperId, name: "Maria Silva" },
+      helpers: [{ helper: { id: helperId, name: "Maria Silva" } }],
       client: { name: "Jane Doe" },
     });
     const jobs = await jobsUpTo(series.id, horizon);
@@ -135,24 +147,33 @@ describe("POST /recurring-series", () => {
       hourlyRateCents: 4500,
       priceCents: 9000,
       notes: "Side door",
-      helper: { id: helperId },
+      helpers: [{ helper: { id: helperId } }],
       recurringSeriesId: series.id,
     });
   });
 
-  it("generates the visits with the series' own helper rate", async () => {
-    const helperId = await createHelper();
+  it("generates the visits with the helpers of the series, at its rates", async () => {
+    const maria = await createHelper();
+    const zoe = await createHelper("Zoe");
 
     const series = await createSeries({
       everyWeeks: 2,
-      helperId,
-      helperHourlyRateCents: 2500,
+      helpers: [{ helperId: zoe }, { helperId: maria, hourlyRateCents: 2500 }],
     });
 
-    expect(series.helperHourlyRateCents).toBe(2500);
+    const team = [
+      ["Maria Silva", 2500],
+      ["Zoe", null],
+    ];
+    expect(ratesOf(series.helpers)).toEqual(team);
     const jobs = await jobsUpTo(series.id, horizon);
-    expect(jobs.map((job) => job.helperHourlyRateCents)).toEqual([
-      2500, 2500, 2500, 2500, 2500,
+    expect(jobs).toHaveLength(5);
+    expect(jobs.map((job) => ratesOf(job.helpers))).toEqual([
+      team,
+      team,
+      team,
+      team,
+      team,
     ]);
   });
 
@@ -250,7 +271,7 @@ describe("POST /recurring-series", () => {
     });
     const helper = await api.post("/recurring-series", {
       propertyId: await createProperty(),
-      helperId: missingId,
+      helpers: [{ helperId: missingId }],
       everyWeeks: 1,
       startDate: today,
       startTime: "09:00",
@@ -267,7 +288,9 @@ describe("POST /recurring-series", () => {
     });
     expect(helper.status).toBe(400);
     expect(helper.body).toMatchObject({
-      error: { issues: [{ path: "helperId", message: "Helper not found" }] },
+      error: {
+        issues: [{ path: "helpers.0.helperId", message: "Helper not found" }],
+      },
     });
   });
 });
@@ -319,6 +342,40 @@ describe("GET /jobs with recurring series", () => {
 
     expect(inserted).toBe(0);
     expect(await jobsUpTo(series.id, horizon)).toHaveLength(9);
+  });
+
+  it("counts the visits a generation created, whatever their helpers", async () => {
+    const series = await createSeries({
+      everyWeeks: 1,
+      helpers: [
+        { helperId: await createHelper() },
+        { helperId: await createHelper("Zoe") },
+      ],
+    });
+    const dates = [addDays(horizon, 1), addDays(horizon, 2)];
+
+    const inserted = await repository.generateJobs(
+      api.organizationId,
+      series.id,
+      horizon,
+      dates,
+      addDays(horizon, 2),
+    );
+
+    expect(inserted).toBe(2);
+    const created = (await jobsUpTo(series.id, addDays(horizon, 2))).filter(
+      (job) => dates.includes(job.scheduledDate),
+    );
+    expect(created.map((job) => ratesOf(job.helpers))).toEqual([
+      [
+        ["Maria Silva", null],
+        ["Zoe", null],
+      ],
+      [
+        ["Maria Silva", null],
+        ["Zoe", null],
+      ],
+    ]);
   });
 
   it("does not bring back a visit that was moved or deleted", async () => {
@@ -403,58 +460,187 @@ describe("PATCH /recurring-series/:id", () => {
     ]);
   });
 
-  it("assigns and unassigns the helper on the upcoming jobs", async () => {
+  it("assigns and unassigns the helpers on the upcoming jobs", async () => {
     const helperId = await createHelper();
     const series = await createSeries({ everyWeeks: 2 });
 
     const assigned = await api.patch<SeriesBody>(
       `/recurring-series/${series.id}`,
-      { helperId },
+      { helpers: [{ helperId }] },
     );
     const withHelper = await jobsUpTo(series.id, horizon);
     const unassigned = await api.patch<SeriesBody>(
       `/recurring-series/${series.id}`,
-      { helperId: null },
+      { helpers: [] },
     );
     const without = await jobsUpTo(series.id, horizon);
 
-    expect(assigned.body.helper).toEqual({
-      id: helperId,
-      name: "Maria Silva",
-      hourlyRateCents: null,
-    });
-    expect(withHelper.every((job) => job.helper?.id === helperId)).toBe(true);
-    expect(unassigned.body.helper).toBeNull();
-    expect(without.every((job) => job.helper === null)).toBe(true);
+    expect(assigned.body.helpers).toEqual([
+      {
+        helper: { id: helperId, name: "Maria Silva", hourlyRateCents: null },
+        hourlyRateCents: null,
+      },
+    ]);
+    expect(withHelper.map((job) => ratesOf(job.helpers))).toEqual(
+      withHelper.map(() => [["Maria Silva", null]]),
+    );
+    expect(unassigned.body.helpers).toEqual([]);
+    expect(without.every((job) => job.helpers.length === 0)).toBe(true);
   });
 
-  it("changes the helper rate of the upcoming jobs that still match", async () => {
+  it("gives its new helpers to the upcoming jobs that still had the previous ones", async () => {
+    const maria = await createHelper();
+    const zoe = await createHelper("Zoe");
+    const ana = await createHelper("Ana");
+    const series = await createSeries({
+      everyWeeks: 2,
+      helpers: [{ helperId: maria }, { helperId: zoe }],
+    });
+    const [first, second, third, fourth] = await jobsUpTo(series.id, horizon);
+    if (
+      first === undefined ||
+      second === undefined ||
+      third === undefined ||
+      fourth === undefined
+    ) {
+      throw new Error("Expected generated jobs");
+    }
+    // One visit already happened: it is left alone.
+    await api.patch(`/jobs/${first.id}`, { status: "completed" });
+    // Two visits were changed by hand, one helper more and one less: each
+    // keeps who it has.
+    const more = await api.patch<JobBody>(`/jobs/${second.id}`, {
+      helpers: [{ helperId: maria }, { helperId: zoe }, { helperId: ana }],
+    });
+    await api.patch(`/jobs/${third.id}`, { helpers: [{ helperId: zoe }] });
+
+    const res = await api.patch<SeriesBody>(`/recurring-series/${series.id}`, {
+      helpers: [{ helperId: maria }, { helperId: ana, hourlyRateCents: 2100 }],
+    });
+
+    const team = [
+      ["Ana", 2100],
+      ["Maria Silva", null],
+    ];
+    expect(res.status).toBe(200);
+    expect(ratesOf(res.body.helpers)).toEqual(team);
+    const jobs = await jobsUpTo(series.id, horizon);
+    expect(jobs.map((job) => ratesOf(job.helpers))).toEqual([
+      [
+        ["Maria Silva", null],
+        ["Zoe", null],
+      ], // completed
+      [
+        ["Ana", null],
+        ["Maria Silva", null],
+        ["Zoe", null],
+      ], // one more, by hand
+      [["Zoe", null]], // one less, by hand
+      team,
+      team,
+    ]);
+    // Only the visits that took the new helpers were changed.
+    expect(jobs[1]?.updatedAt).toBe(more.body.updatedAt);
+    expect((jobs[3]?.updatedAt ?? "") > fourth.updatedAt).toBe(true);
+  });
+
+  it("does not touch the jobs when the helpers sent are the ones it had", async () => {
+    const maria = await createHelper();
+    const zoe = await createHelper("Zoe");
+    const series = await createSeries({
+      everyWeeks: 2,
+      helpers: [{ helperId: maria, hourlyRateCents: 2500 }, { helperId: zoe }],
+    });
+    const jobs = await jobsUpTo(series.id, horizon);
+
+    // The same two, the other way round, with the usual rate spelled out.
+    const res = await api.patch<SeriesBody>(`/recurring-series/${series.id}`, {
+      helpers: [
+        { helperId: zoe, hourlyRateCents: null },
+        { helperId: maria, hourlyRateCents: 2500 },
+      ],
+    });
+
+    expect(res.body.helpers).toEqual(series.helpers);
+    expect(await jobsUpTo(series.id, horizon)).toEqual(jobs);
+  });
+
+  it("changes a helper's rate on the upcoming jobs that still match", async () => {
     const helperId = await createHelper();
     const series = await createSeries({
       everyWeeks: 2,
-      helperId,
-      helperHourlyRateCents: 2500,
+      helpers: [{ helperId, hourlyRateCents: 2500 }],
     });
     const [, second] = await jobsUpTo(series.id, horizon);
     if (second === undefined) {
       throw new Error("Expected generated jobs");
     }
     // One visit pays a rate of its own: it keeps it.
-    await api.patch(`/jobs/${second.id}`, { helperHourlyRateCents: 3000 });
-
-    const res = await api.patch<SeriesBody>(`/recurring-series/${series.id}`, {
-      helperHourlyRateCents: null,
+    await api.patch(`/jobs/${second.id}`, {
+      helpers: [{ helperId, hourlyRateCents: 3000 }],
     });
 
-    expect(res.body.helperHourlyRateCents).toBeNull();
+    const res = await api.patch<SeriesBody>(`/recurring-series/${series.id}`, {
+      helpers: [{ helperId }],
+    });
+
+    expect(ratesOf(res.body.helpers)).toEqual([["Maria Silva", null]]);
     const jobs = await jobsUpTo(series.id, horizon);
-    expect(jobs.map((job) => job.helperHourlyRateCents)).toEqual([
+    expect(jobs.map((job) => job.helpers[0]?.hourlyRateCents)).toEqual([
       null,
       3000,
       null,
       null,
       null,
     ]);
+  });
+
+  it("leaves the helpers alone when the list is not sent", async () => {
+    const helperId = await createHelper();
+    const series = await createSeries({
+      everyWeeks: 2,
+      helpers: [{ helperId, hourlyRateCents: 2500 }],
+    });
+
+    const res = await api.patch<SeriesBody>(`/recurring-series/${series.id}`, {
+      notes: "Side door",
+    });
+
+    expect(res.body.helpers).toEqual(series.helpers);
+    const jobs = await jobsUpTo(series.id, horizon);
+    expect(jobs.map((job) => ratesOf(job.helpers))).toEqual(
+      jobs.map(() => [["Maria Silva", 2500]]),
+    );
+  });
+
+  it("takes a helper deactivated since only when the series already had them", async () => {
+    const maria = await createHelper();
+    const zoe = await createHelper("Zoe");
+    const ana = await createHelper("Ana");
+    const series = await createSeries({ helpers: [{ helperId: maria }] });
+    await api.patch(`/helpers/${maria}`, { active: false });
+    await api.patch(`/helpers/${ana}`, { active: false });
+
+    const kept = await api.patch<SeriesBody>(`/recurring-series/${series.id}`, {
+      helpers: [{ helperId: maria }, { helperId: zoe }],
+    });
+    const added = await api.patch(`/recurring-series/${series.id}`, {
+      helpers: [{ helperId: maria }, { helperId: ana }],
+    });
+
+    expect(kept.status).toBe(200);
+    expect(ratesOf(kept.body.helpers)).toEqual([
+      ["Maria Silva", null],
+      ["Zoe", null],
+    ]);
+    expect(added.status).toBe(400);
+    expect(added.body).toMatchObject({
+      error: {
+        issues: [
+          { path: "helpers.1.helperId", message: "Helper is not active" },
+        ],
+      },
+    });
   });
 
   it("ends the series and removes the unrealized visits after the end", async () => {
@@ -594,7 +780,8 @@ describe("PATCH /recurring-series/:id", () => {
 
 describe("DELETE /recurring-series/:id", () => {
   it("deletes the series and its visits while none happened", async () => {
-    const series = await createSeries();
+    const helperId = await createHelper();
+    const series = await createSeries({ helpers: [{ helperId }] });
     expect(await jobsUpTo(series.id, horizon)).toHaveLength(9);
 
     const res = await api.delete(`/recurring-series/${series.id}`);
@@ -602,6 +789,8 @@ describe("DELETE /recurring-series/:id", () => {
     expect(res).toEqual({ status: 204, body: undefined });
     expect((await api.get(`/recurring-series/${series.id}`)).status).toBe(404);
     expect(await jobsOf(series.id)).toEqual([]);
+    // Nothing of the series or of its visits holds the helper any more.
+    expect((await api.delete(`/helpers/${helperId}`)).status).toBe(204);
   });
 
   it("answers 409 once a visit was completed or cancelled", async () => {

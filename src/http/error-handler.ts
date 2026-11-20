@@ -4,6 +4,14 @@ import { ZodError } from "zod";
 
 import { HttpError, ValidationError } from "./errors.ts";
 
+// The helpers of a job and of a series are rows of their own: a helper that
+// cannot be deleted is held by the job or the series, as far as a reader of
+// the message knows.
+const heldBy: Record<string, string> = {
+  job_helpers: "jobs",
+  recurring_series_helpers: "recurring_series",
+};
+
 export const notFoundHandler: RequestHandler = (req, res) => {
   res.status(404).json({
     error: {
@@ -66,10 +74,11 @@ export const errorHandler: ErrorRequestHandler = (error, req, res, _next) => {
   // A row that other rows still reference cannot be deleted. Only deletes
   // raise this: inserts select the referenced row first instead.
   if (error instanceof DatabaseError && error.code === "23503") {
+    const table = error.table ?? "other records";
     res.status(409).json({
       error: {
         code: "conflict",
-        message: `Cannot delete: still referenced by ${error.table ?? "other records"}`,
+        message: `Cannot delete: still referenced by ${heldBy[table] ?? table}`,
       },
     });
     return;

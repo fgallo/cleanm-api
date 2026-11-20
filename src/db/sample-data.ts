@@ -75,7 +75,11 @@ type Discount = {
   description: string;
 };
 
-type Template = Omit<JobTemplate, "helperId"> & { helper?: HelperName };
+// A helper by name, with the rate of the visit when it is not their usual
+// one.
+type SampleHelper = HelperName | { name: HelperName; hourlyRateCents: number };
+
+type Template = Omit<JobTemplate, "helpers"> & { helpers?: SampleHelper[] };
 
 type SampleSeries = Template & {
   rule: Rule;
@@ -131,7 +135,7 @@ const sampleClients: SampleClient[] = [
           durationMinutes: 150,
           serviceType: "regular",
           hourlyRateCents: 4500,
-          helper: "Carla Mendes",
+          helpers: ["Carla Mendes"],
           visits: [
             {
               weeksFromToday: -3,
@@ -199,7 +203,7 @@ const sampleClients: SampleClient[] = [
           serviceType: "regular",
           hourlyRateCents: 4500,
           fixedPriceCents: 22000,
-          helper: "Diego Alves",
+          helpers: ["Diego Alves", "Carla Mendes"],
         },
       },
       {
@@ -218,7 +222,7 @@ const sampleClients: SampleClient[] = [
             serviceType: "move_out",
             hourlyRateCents: 5000,
             fixedPriceCents: 38000,
-            helper: "Diego Alves",
+            helpers: ["Diego Alves", "Carla Mendes"],
             discount: { fixedCents: 3000, description: "Returning client" },
           },
         ],
@@ -246,7 +250,7 @@ const sampleClients: SampleClient[] = [
           durationMinutes: 180,
           serviceType: "regular",
           hourlyRateCents: 5000,
-          helper: "Carla Mendes",
+          helpers: ["Carla Mendes"],
         },
       },
     ],
@@ -296,7 +300,7 @@ const sampleClients: SampleClient[] = [
           durationMinutes: 120,
           serviceType: "regular",
           hourlyRateCents: 4500,
-          helper: "Diego Alves",
+          helpers: ["Diego Alves"],
           uninvoicedDays: 14,
         },
       },
@@ -322,7 +326,8 @@ const sampleClients: SampleClient[] = [
             durationMinutes: 240,
             serviceType: "deep",
             hourlyRateCents: 4500,
-            helper: "Carla Mendes",
+            // A deep cleaning pays her more than her usual rate.
+            helpers: [{ name: "Carla Mendes", hourlyRateCents: 2500 }],
             discount: {
               basisPoints: 1000,
               description: "Referral for 1 cleaning",
@@ -360,7 +365,7 @@ const sampleClients: SampleClient[] = [
           durationMinutes: 150,
           serviceType: "regular",
           hourlyRateCents: 4800,
-          helper: "Fatima Noor",
+          helpers: ["Fatima Noor"],
           notes: "Moved out of the city",
         },
       },
@@ -556,13 +561,21 @@ export async function createSampleData(
   };
 }
 
-// The template with the helper's name replaced by its id.
+// The template with the names of its helpers replaced by their ids.
 function templateOf(template: Template, context: Context): JobTemplate {
-  const { helper, ...rest } = template;
+  const { helpers: assigned = [], ...rest } = template;
   return {
     ...rest,
-    helperId:
-      helper === undefined ? null : (context.helperIds.get(helper) ?? null),
+    helpers: assigned.map((helper) => {
+      const { name, hourlyRateCents } =
+        typeof helper === "string"
+          ? { name: helper, hourlyRateCents: null }
+          : helper;
+      return {
+        helperId: created(context.helperIds.get(name), "helper"),
+        hourlyRateCents,
+      };
+    }),
   };
 }
 

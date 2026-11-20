@@ -30,8 +30,10 @@ type JobBody = {
   notes: string | null;
   property: { id: string; addressLine1: string };
   client: { id: string; name: string };
-  helper: { id: string; name: string; hourlyRateCents: number | null } | null;
-  helperHourlyRateCents: number | null;
+  helpers: Array<{
+    helper: { id: string; name: string; hourlyRateCents: number | null };
+    hourlyRateCents: number | null;
+  }>;
   createdAt: string;
   updatedAt: string;
 };
@@ -133,8 +135,7 @@ describe("POST /jobs", () => {
         notes: null,
       },
       client: { id: clientId, name: "Jane Doe" },
-      helper: null,
-      helperHourlyRateCents: null,
+      helpers: [],
       recurringSeriesId: null,
       invoice: null,
       createdAt: expect.any(String),
@@ -142,39 +143,49 @@ describe("POST /jobs", () => {
     });
   });
 
-  it("assigns a helper, paid their usual rate", async () => {
+  it("assigns helpers, listed by name and paid their usual rate", async () => {
     const { propertyId } = await createProperty();
-    const helperId = await createHelper({
+    const zoe = await createHelper({ name: "Zoe", hourlyRateCents: 2000 });
+    const maria = await createHelper({
       name: "Maria Silva",
       hourlyRateCents: 2200,
     });
-
-    const job = await createJob(propertyId, { helperId });
-
-    expect(job.helper).toEqual({
-      id: helperId,
-      name: "Maria Silva",
-      hourlyRateCents: 2200,
-    });
-    expect(job.helperHourlyRateCents).toBeNull();
-  });
-
-  it("pays the helper another rate when the job has its own", async () => {
-    const { propertyId } = await createProperty();
-    const helperId = await createHelper({ hourlyRateCents: 2200 });
 
     const job = await createJob(propertyId, {
-      helperId,
-      helperHourlyRateCents: 2500,
+      helpers: [{ helperId: zoe }, { helperId: maria }],
     });
 
-    expect(job.helperHourlyRateCents).toBe(2500);
-    // The helper's usual rate is untouched.
-    expect(job.helper?.hourlyRateCents).toBe(2200);
+    expect(job.helpers).toEqual([
+      {
+        helper: { id: maria, name: "Maria Silva", hourlyRateCents: 2200 },
+        hourlyRateCents: null,
+      },
+      {
+        helper: { id: zoe, name: "Zoe", hourlyRateCents: 2000 },
+        hourlyRateCents: null,
+      },
+    ]);
+  });
+
+  it("pays a helper another rate when the job has one for them", async () => {
+    const { propertyId } = await createProperty();
+    const maria = await createHelper({ hourlyRateCents: 2200 });
+    const zoe = await createHelper({ name: "Zoe", hourlyRateCents: 2000 });
+
+    const job = await createJob(propertyId, {
+      helpers: [{ helperId: maria, hourlyRateCents: 2500 }, { helperId: zoe }],
+    });
+
+    expect(job.helpers).toMatchObject([
+      // The helper's usual rate is untouched.
+      { helper: { id: maria, hourlyRateCents: 2200 }, hourlyRateCents: 2500 },
+      { helper: { id: zoe, hourlyRateCents: 2000 }, hourlyRateCents: null },
+    ]);
   });
 
   it("answers 400 for a negative helper rate", async () => {
     const { propertyId } = await createProperty();
+    const helperId = await createHelper();
 
     const res = await api.post("/jobs", {
       propertyId,
@@ -183,21 +194,75 @@ describe("POST /jobs", () => {
       durationMinutes: 150,
       serviceType: "regular",
       hourlyRateCents: 4500,
-      helperHourlyRateCents: -1,
+      helpers: [{ helperId, hourlyRateCents: -1 }],
     });
 
     expect(res.status).toBe(400);
     expect(res.body).toMatchObject({
-      error: { issues: [{ path: "helperHourlyRateCents" }] },
+      error: { issues: [{ path: "helpers.0.hourlyRateCents" }] },
     });
   });
 
-  it("answers 400 for a helper that does not exist", async () => {
+  it("answers 400 for a helper listed twice", async () => {
     const { propertyId } = await createProperty();
+    const helperId = await createHelper();
 
     const res = await api.post("/jobs", {
       propertyId,
-      helperId: missingId,
+      scheduledDate: "2026-10-14",
+      startTime: "09:00",
+      durationMinutes: 150,
+      serviceType: "regular",
+      hourlyRateCents: 4500,
+      helpers: [{ helperId }, { helperId, hourlyRateCents: 2500 }],
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({
+      error: {
+        issues: [
+          { path: "helpers", message: "A helper can be listed only once" },
+        ],
+      },
+    });
+  });
+
+  it("answers 400 for a helper that does not exist, naming its place in the list", async () => {
+    const { propertyId } = await createProperty();
+    const helperId = await createHelper();
+
+    const res = await api.post("/jobs", {
+      propertyId,
+      helpers: [{ helperId }, { helperId: missingId }],
+      scheduledDate: "2026-10-14",
+      startTime: "09:00",
+      durationMinutes: 60,
+      serviceType: "regular",
+      hourlyRateCents: 4500,
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      error: {
+        code: "validation_error",
+        message: "Invalid request",
+        issues: [{ path: "helpers.1.helperId", message: "Helper not found" }],
+      },
+    });
+    // Nothing was created with the helper that does exist.
+    expect((await api.get("/jobs?from=2026-10-14&to=2026-10-14")).body).toEqual(
+      [],
+    );
+  });
+
+  it("answers 400 for a helper of another organization", async () => {
+    const { propertyId } = await createProperty();
+    const other = await createOrganization();
+    const helper = await helpers.createHelper(other, { name: "Someone Else" });
+
+    const res = await api.post("/jobs", {
+      propertyId,
+      helpers: [{ helperId: helper.id }],
       scheduledDate: "2026-10-14",
       startTime: "09:00",
       durationMinutes: 60,
@@ -208,30 +273,8 @@ describe("POST /jobs", () => {
     expect(res.status).toBe(400);
     expect(res.body).toMatchObject({
       error: {
-        code: "validation_error",
-        issues: [{ path: "helperId", message: "Helper not found" }],
+        issues: [{ path: "helpers.0.helperId", message: "Helper not found" }],
       },
-    });
-  });
-
-  it("answers 400 for a helper of another organization", async () => {
-    const { propertyId } = await createProperty();
-    const other = await createOrganization();
-    const helper = await helpers.createHelper(other, { name: "Someone Else" });
-
-    const res = await api.post("/jobs", {
-      propertyId,
-      helperId: helper.id,
-      scheduledDate: "2026-10-14",
-      startTime: "09:00",
-      durationMinutes: 60,
-      serviceType: "regular",
-      hourlyRateCents: 4500,
-    });
-
-    expect(res.status).toBe(400);
-    expect(res.body).toMatchObject({
-      error: { issues: [{ path: "helperId", message: "Helper not found" }] },
     });
   });
 
@@ -242,7 +285,7 @@ describe("POST /jobs", () => {
 
     const res = await api.post("/jobs", {
       propertyId,
-      helperId,
+      helpers: [{ helperId }],
       scheduledDate: "2026-10-14",
       startTime: "09:00",
       durationMinutes: 60,
@@ -253,7 +296,9 @@ describe("POST /jobs", () => {
     expect(res.status).toBe(400);
     expect(res.body).toMatchObject({
       error: {
-        issues: [{ path: "helperId", message: "Helper is not active" }],
+        issues: [
+          { path: "helpers.0.helperId", message: "Helper is not active" },
+        ],
       },
     });
   });
@@ -266,7 +311,7 @@ describe("POST /jobs", () => {
     expect(job).toMatchObject({
       status: "scheduled",
       fixedPriceCents: null,
-      helperHourlyRateCents: null,
+      helpers: [],
       notes: null,
     });
   });
@@ -519,59 +564,66 @@ describe("PATCH /jobs/:id", () => {
     });
   });
 
-  it("assigns and unassigns a helper", async () => {
+  it("replaces the helpers of the job with the list given", async () => {
     const { propertyId } = await createProperty();
-    const job = await createJob(propertyId);
-    const helperId = await createHelper({ name: "Maria Silva" });
+    const maria = await createHelper({ name: "Maria Silva" });
+    const zoe = await createHelper({ name: "Zoe" });
+    const ana = await createHelper({ name: "Ana" });
+    const job = await createJob(propertyId, { helpers: [{ helperId: maria }] });
 
-    const assigned = await api.patch<JobBody>(`/jobs/${job.id}`, { helperId });
-    const unassigned = await api.patch<JobBody>(`/jobs/${job.id}`, {
-      helperId: null,
+    const replaced = await api.patch<JobBody>(`/jobs/${job.id}`, {
+      helpers: [{ helperId: zoe, hourlyRateCents: 2100 }, { helperId: ana }],
+    });
+    const emptied = await api.patch<JobBody>(`/jobs/${job.id}`, {
+      helpers: [],
     });
 
-    expect(assigned.status).toBe(200);
-    expect(assigned.body.helper).toEqual({
-      id: helperId,
-      name: "Maria Silva",
-      hourlyRateCents: null,
-    });
-    expect(unassigned.status).toBe(200);
-    expect(unassigned.body.helper).toBeNull();
+    expect(replaced.status).toBe(200);
+    expect(replaced.body.helpers).toEqual([
+      {
+        helper: { id: ana, name: "Ana", hourlyRateCents: null },
+        hourlyRateCents: null,
+      },
+      {
+        helper: { id: zoe, name: "Zoe", hourlyRateCents: null },
+        hourlyRateCents: 2100,
+      },
+    ]);
+    // The helpers are part of the job: changing them changes it.
+    expect(replaced.body.updatedAt > job.updatedAt).toBe(true);
+    expect(emptied.status).toBe(200);
+    expect(emptied.body.helpers).toEqual([]);
   });
 
-  it("sets and clears the helper's rate for the job", async () => {
+  it("leaves the helpers alone when the list is not sent", async () => {
     const { propertyId } = await createProperty();
-    const helperId = await createHelper({ hourlyRateCents: 2200 });
-    const job = await createJob(propertyId, { helperId });
-
-    const set = await api.patch<JobBody>(`/jobs/${job.id}`, {
-      helperHourlyRateCents: 2500,
-    });
-    const cleared = await api.patch<JobBody>(`/jobs/${job.id}`, {
-      helperHourlyRateCents: null,
-    });
-
-    expect(set.body.helperHourlyRateCents).toBe(2500);
-    expect(cleared.body.helperHourlyRateCents).toBeNull();
-  });
-
-  it("keeps the job's helper rate when the helper changes", async () => {
-    const { propertyId } = await createProperty();
-    const first = await createHelper({ hourlyRateCents: 2200 });
-    const second = await createHelper({ name: "Zoe", hourlyRateCents: 2000 });
+    const helperId = await createHelper();
     const job = await createJob(propertyId, {
-      helperId: first,
-      helperHourlyRateCents: 2500,
+      helpers: [{ helperId, hourlyRateCents: 2500 }],
     });
 
     const res = await api.patch<JobBody>(`/jobs/${job.id}`, {
-      helperId: second,
+      durationMinutes: 180,
     });
 
-    expect(res.body).toMatchObject({
-      helper: { id: second, hourlyRateCents: 2000 },
-      helperHourlyRateCents: 2500,
+    expect(res.status).toBe(200);
+    expect(res.body.helpers).toEqual(job.helpers);
+  });
+
+  it("sets and clears a helper's rate for the job", async () => {
+    const { propertyId } = await createProperty();
+    const helperId = await createHelper({ hourlyRateCents: 2200 });
+    const job = await createJob(propertyId, { helpers: [{ helperId }] });
+
+    const set = await api.patch<JobBody>(`/jobs/${job.id}`, {
+      helpers: [{ helperId, hourlyRateCents: 2500 }],
     });
+    const cleared = await api.patch<JobBody>(`/jobs/${job.id}`, {
+      helpers: [{ helperId, hourlyRateCents: null }],
+    });
+
+    expect(set.body.helpers).toMatchObject([{ hourlyRateCents: 2500 }]);
+    expect(cleared.body.helpers).toMatchObject([{ hourlyRateCents: null }]);
   });
 
   it("answers 400 for a helper that is not active", async () => {
@@ -580,18 +632,22 @@ describe("PATCH /jobs/:id", () => {
     const helperId = await createHelper();
     await api.patch(`/helpers/${helperId}`, { active: false });
 
-    const res = await api.patch(`/jobs/${job.id}`, { helperId });
+    const res = await api.patch(`/jobs/${job.id}`, { helpers: [{ helperId }] });
 
     expect(res.status).toBe(400);
     expect(res.body).toMatchObject({
-      error: { issues: [{ path: "helperId" }] },
+      error: {
+        issues: [
+          { path: "helpers.0.helperId", message: "Helper is not active" },
+        ],
+      },
     });
   });
 
   it("keeps the helper on a job after the helper is deactivated", async () => {
     const { propertyId } = await createProperty();
     const helperId = await createHelper({ name: "Maria Silva" });
-    const job = await createJob(propertyId, { helperId });
+    const job = await createJob(propertyId, { helpers: [{ helperId }] });
     await api.patch(`/helpers/${helperId}`, { active: false });
 
     const res = await api.patch<JobBody>(`/jobs/${job.id}`, {
@@ -599,11 +655,27 @@ describe("PATCH /jobs/:id", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(res.body.helper).toEqual({
-      id: helperId,
-      name: "Maria Silva",
-      hourlyRateCents: null,
+    expect(res.body.helpers).toEqual(job.helpers);
+  });
+
+  it("takes a list that still has a helper deactivated since", async () => {
+    const { propertyId } = await createProperty();
+    const maria = await createHelper({ name: "Maria Silva" });
+    const zoe = await createHelper({ name: "Zoe" });
+    const job = await createJob(propertyId, { helpers: [{ helperId: maria }] });
+    await api.patch(`/helpers/${maria}`, { active: false });
+
+    // The whole list travels to add one helper: the one the job already
+    // had is not refused.
+    const res = await api.patch<JobBody>(`/jobs/${job.id}`, {
+      helpers: [{ helperId: maria }, { helperId: zoe }],
     });
+
+    expect(res.status).toBe(200);
+    expect(res.body.helpers.map((assigned) => assigned.helper.id)).toEqual([
+      maria,
+      zoe,
+    ]);
   });
 
   it("does not accept a new property", async () => {
@@ -616,9 +688,13 @@ describe("PATCH /jobs/:id", () => {
   });
 
   it("answers 404 for a job that does not exist", async () => {
-    const res = await api.patch(`/jobs/${missingId}`, { durationMinutes: 60 });
+    const fields = await api.patch(`/jobs/${missingId}`, {
+      durationMinutes: 60,
+    });
+    const helpersOnly = await api.patch(`/jobs/${missingId}`, { helpers: [] });
 
-    expect(res.status).toBe(404);
+    expect(fields.status).toBe(404);
+    expect(helpersOnly.status).toBe(404);
   });
 });
 
@@ -631,6 +707,18 @@ describe("DELETE /jobs/:id", () => {
 
     expect(res).toEqual({ status: 204, body: undefined });
     expect((await api.get(`/jobs/${job.id}`)).status).toBe(404);
+  });
+
+  it("deletes a job together with who was assigned to it", async () => {
+    const { propertyId } = await createProperty();
+    const helperId = await createHelper();
+    const job = await createJob(propertyId, { helpers: [{ helperId }] });
+
+    const res = await api.delete(`/jobs/${job.id}`);
+
+    expect(res.status).toBe(204);
+    // Nothing of the job holds the helper any more.
+    expect((await api.delete(`/helpers/${helperId}`)).status).toBe(204);
   });
 
   it("answers 404 for a job that does not exist", async () => {
