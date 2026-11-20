@@ -33,7 +33,7 @@ Local layout: all repos side by side under `~/Projects/cleanm/`.
 - Per day, the list of jobs. Each job shows:
   - client: name, address, notes about the house
   - service type: regular, deep, move-in, move-out
-  - helper assigned, if any
+  - helpers assigned, if any
   - hourly rate, hours, price
   - payment: paid or not, method (e-transfer, cash)
   - whether an invoice was generated
@@ -66,7 +66,8 @@ multi-tenant signup and billing.
     saw, so concurrent requests cannot duplicate visits.
   - A change to the series template reaches its upcoming unrealized jobs
     field by field, only where the job still had the previous value, so
-    hand-edited visits are kept.
+    hand-edited visits are kept. The helpers of a visit count as one field:
+    who they are and what each is paid.
   - The rule and the property never change: to change the rhythm, end the
     series (`end_date`, which removes unrealized visits after it in the same
     statement, and is refused while one of them is invoiced) and create
@@ -87,12 +88,18 @@ multi-tenant signup and billing.
   2026-11-16: they become a catalog per organization (roadmap step 8), so
   that another business offers its own. An invoice keeps the item it
   printed, so renaming or retiring a service later changes no invoice.
+- A visit is done by any number of helpers (decided 2026-11-17; a job had at
+  most one until then). `job_helpers` has a row per helper of a job, and
+  `recurring_series_helpers` the helpers a series generates its jobs with; a
+  helper is on a job at most once. The API takes and returns them as a list
+  (`helpers`), which replaces the previous one as a whole in an update.
 - Helper pay (confirmed 2026-11-14): a helper has a usual hourly rate
-  (`helpers.hourly_rate_cents`), and some visits pay a different one. A job,
-  and a series as the template of its jobs, carries a rate of its own only
-  then (`helper_hourly_rate_cents`; null means the usual rate). The rate on a
-  job belongs to the job and stays when its helper changes. What a helper
-  earned (rate x hours) is not computed yet.
+  (`helpers.hourly_rate_cents`), and some visits pay a different one. The row
+  that puts a helper on a job, or on a series as the template of its jobs,
+  carries a rate of its own only then (`hourly_rate_cents`; null means the
+  usual rate). A rate is what one helper is paid for one job: it goes when
+  the helper is taken off the job. What a helper earned (rate x hours) is not
+  computed yet.
 
 ## 4. Data model sketch
 
@@ -100,7 +107,8 @@ This is a map, not a spec. Tables are implemented one at a time, as each roadmap
 step needs them. Migrations make schema changes cheap.
 
 `organizations`, `users`, `clients`, `properties`, `helpers`, `jobs`,
-`recurring_series`, `invoices`, `invoice_items`, `payments`
+`job_helpers`, `recurring_series`, `recurring_series_helpers`, `invoices`,
+`invoice_items`, `payments`
 
 `properties` holds the address and house details, because one client can have
 more than one property.
@@ -147,14 +155,16 @@ more than one property.
 6. Rows that other rows reference are never deleted in cascade (a property
    with jobs, later a job with an invoice): the API answers `409 conflict`, so
    history is kept. Where a row must still be retired, it gets a flag instead
-   (`helpers.active`).
+   (`helpers.active`). Rows that are part of another go with it: the
+   properties of a client, the helpers assigned to a job.
 7. What already happened does not change because something else was edited
    later (stated on 2026-11-14: invoices are fiscal documents, kept as they
    are for checking and accountability). A record that reads a value kept
    elsewhere takes its own copy before that value changes: an invoice copies
    everything it prints when it is created (rule 5), and when a helper's
-   usual rate changes, their jobs before today that had no rate of their own
-   get the previous one written on them, in the same statement. And a
+   usual rate changes, the jobs before today that paid them that rate (none
+   of their own) get the previous one written on them, in the same
+   statement. And a
    document that was settled is closed: an invoice paid in full is no longer
    edited (`locked`, derived from its payments like `paid`, rule 3).
 
