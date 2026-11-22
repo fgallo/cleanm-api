@@ -33,8 +33,9 @@ Local layout: all repos side by side under `~/Projects/cleanm/`.
 - Per day, the list of jobs. Each job shows:
   - client: name, address, notes about the house
   - service type: regular, deep, move-in, move-out
-  - helpers assigned, if any
-  - hourly rate, hours, price
+  - who does it: the helpers assigned, if any, and whether the owner works
+    on it
+  - hourly rate, hours of cleaning, time at the house, price
   - payment: paid or not, method (e-transfer, cash)
   - whether an invoice was generated
   - job status
@@ -93,13 +94,26 @@ multi-tenant signup and billing.
   `recurring_series_helpers` the helpers a series generates its jobs with; a
   helper is on a job at most once. The API takes and returns them as a list
   (`helpers`), which replaces the previous one as a whole in an update.
+- The hours of a job are hours of cleaning, not time at the house (decided
+  2026-11-17): a cleaning of 3 hours takes one person 3 hours, two people
+  1h30 and three people 1 hour. `duration_minutes` keeps the hours of
+  cleaning, which is what the client pays for and what an invoice copies,
+  whoever does them. The people are the helpers of the job and the owner of
+  the business on the visits the owner works on: it varies by visit, since
+  helpers sometimes go without the owner, so jobs and series say it
+  (`owner_works`, true unless said otherwise). A job with nobody marked
+  counts as one person. How long a visit takes at the house is never typed:
+  the API computes it (`onSiteMinutes`: hours of cleaning ÷ `people`, rounded
+  to the minute), for the calendar to show a visit for that long.
 - Helper pay (confirmed 2026-11-14): a helper has a usual hourly rate
   (`helpers.hourly_rate_cents`), and some visits pay a different one. The row
   that puts a helper on a job, or on a series as the template of its jobs,
   carries a rate of its own only then (`hourly_rate_cents`; null means the
   usual rate). A rate is what one helper is paid for one job: it goes when
-  the helper is taken off the job. What a helper earned (rate x hours) is not
-  computed yet.
+  the helper is taken off the job. A helper is paid for the time at the
+  house, not for the hours of cleaning (decided 2026-11-17): `payCents` on
+  each helper of a job is the rate in effect × `onSiteMinutes`, computed in
+  the query. What a helper earned over a period is not added up yet.
 
 ## 4. Data model sketch
 
@@ -128,7 +142,9 @@ more than one property.
    is paid if its payments cover the total. Store `paid_on` (a calendar date:
    revenue is looked up by month) and `method` on payments. The same for a job's price: `fixed_price_cents` when a price was
    agreed, otherwise `hourly_rate_cents` × `duration_minutes` / 60, computed
-   in the query.
+   in the query. And for who does a job: how many people, how long it takes
+   them at the house and what each helper is paid for it are computed from
+   its helpers, `owner_works` and `duration_minutes`.
 4. Money as integer cents. Timestamps as `timestamptz` in UTC. The organization
    has a timezone field. A job's day and start time are `date` and `time`
    without time zone: a job is a slot on the organization's calendar, not an
