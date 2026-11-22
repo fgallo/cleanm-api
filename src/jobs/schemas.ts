@@ -25,6 +25,8 @@ const helpers = z
 // What a job and a recurring series (the template of its jobs) have in common.
 export const jobTemplate = {
   startTime: z.iso.time(),
+  // The hours of cleaning, whoever does them: how long the job takes at the
+  // house follows from who is on it.
   durationMinutes: z
     .int()
     .positive()
@@ -34,6 +36,8 @@ export const jobTemplate = {
   // null means the price is hourly rate x duration.
   fixedPriceCents: cents.nullable().optional(),
   helpers: helpers.optional(),
+  // Whether the owner of the business works on the job; true when not sent.
+  ownerWorks: z.boolean().optional(),
   notes: notes.optional(),
 };
 
