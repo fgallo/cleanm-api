@@ -5,9 +5,12 @@
 // A helper as a job or a series reads them. `helper.hourlyRateCents` is
 // their usual rate; `hourlyRateCents` next to it is what this job pays them
 // for an hour when it is not the usual rate, and null means the usual rate.
+// `payCents` is what the job pays them: the rate in effect for the time they
+// are at the house, null while they have no rate at all.
 export type AssignedHelper = {
   helper: { id: string; name: string; hourlyRateCents: number | null };
   hourlyRateCents: number | null;
+  payCents: number | null;
 };
 
 // A helper as a request assigns them.
@@ -30,7 +33,33 @@ export const seriesHelpers: Assignments = {
   key: "recurring_series_id",
 };
 
-// The column that lists the helpers of the row aliased `row`, by name.
+// A join that works out who does the row aliased `row`, as `team`. The hours
+// of a job are hours of cleaning, shared by the people who do it: its helpers
+// and the owner of the business, when the owner works on it. So
+// `team.people` is how many they are, one when nobody is marked, and
+// `team.on_site_minutes` how long the job takes them at the house, rounded
+// to the minute. Always one row: a count of no helpers is still a row.
+export function teamJoin({ table, key }: Assignments, row: string): string {
+  return `
+    CROSS JOIN LATERAL (
+      SELECT
+        counted.people,
+        GREATEST(
+          round(${row}.duration_minutes::numeric / counted.people), 1
+        )::integer AS on_site_minutes
+      FROM (
+        SELECT
+          GREATEST(count(*) + ${row}.owner_works::integer, 1)::integer AS people
+        FROM ${table} a
+        WHERE a.organization_id = ${row}.organization_id
+          AND a.${key} = ${row}.id
+      ) counted
+    ) team`;
+}
+
+// The column that lists the helpers of the row aliased `row`, by name, each
+// with what the job pays them: for the time at the house, so it reads `team`
+// (`teamJoin`).
 export function assignedHelpersColumn(
   { table, key }: Assignments,
   row: string,
@@ -44,7 +73,11 @@ export function assignedHelpersColumn(
             'name', h.name,
             'hourlyRateCents', h.hourly_rate_cents
           ),
-          'hourlyRateCents', a.hourly_rate_cents
+          'hourlyRateCents', a.hourly_rate_cents,
+          'payCents', round(
+            COALESCE(a.hourly_rate_cents, h.hourly_rate_cents)
+              * team.on_site_minutes / 60.0
+          )::integer
         )
         ORDER BY h.name, h.id
       ),

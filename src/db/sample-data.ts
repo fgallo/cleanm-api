@@ -222,7 +222,9 @@ const sampleClients: SampleClient[] = [
             serviceType: "move_out",
             hourlyRateCents: 5000,
             fixedPriceCents: 38000,
+            // The two of them did it without the owner: 2h30 each.
             helpers: ["Diego Alves", "Carla Mendes"],
+            ownerWorks: false,
             discount: { fixedCents: 3000, description: "Returning client" },
           },
         ],
@@ -300,7 +302,9 @@ const sampleClients: SampleClient[] = [
           durationMinutes: 120,
           serviceType: "regular",
           hourlyRateCents: 4500,
+          // Diego does these visits without the owner.
           helpers: ["Diego Alves"],
+          ownerWorks: false,
           uninvoicedDays: 14,
         },
       },

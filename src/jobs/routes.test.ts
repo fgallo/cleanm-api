@@ -33,7 +33,11 @@ type JobBody = {
   helpers: Array<{
     helper: { id: string; name: string; hourlyRateCents: number | null };
     hourlyRateCents: number | null;
+    payCents: number | null;
   }>;
+  ownerWorks: boolean;
+  people: number;
+  onSiteMinutes: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -136,6 +140,9 @@ describe("POST /jobs", () => {
       },
       client: { id: clientId, name: "Jane Doe" },
       helpers: [],
+      ownerWorks: true,
+      people: 1,
+      onSiteMinutes: 150,
       recurringSeriesId: null,
       invoice: null,
       createdAt: expect.any(String),
@@ -155,14 +162,17 @@ describe("POST /jobs", () => {
       helpers: [{ helperId: zoe }, { helperId: maria }],
     });
 
+    // 150 minutes between the two of them and the owner: 50 minutes each.
     expect(job.helpers).toEqual([
       {
         helper: { id: maria, name: "Maria Silva", hourlyRateCents: 2200 },
         hourlyRateCents: null,
+        payCents: 1833,
       },
       {
         helper: { id: zoe, name: "Zoe", hourlyRateCents: 2000 },
         hourlyRateCents: null,
+        payCents: 1667,
       },
     ]);
   });
@@ -312,8 +322,148 @@ describe("POST /jobs", () => {
       status: "scheduled",
       fixedPriceCents: null,
       helpers: [],
+      ownerWorks: true,
       notes: null,
     });
+  });
+
+  it("shares the hours of cleaning between the owner and the helpers", async () => {
+    const { propertyId } = await createProperty();
+    const maria = await createHelper();
+    const zoe = await createHelper({ name: "Zoe" });
+
+    const alone = await createJob(propertyId, { durationMinutes: 180 });
+    const withOne = await createJob(propertyId, {
+      durationMinutes: 180,
+      helpers: [{ helperId: maria }],
+    });
+    const withTwo = await createJob(propertyId, {
+      durationMinutes: 180,
+      helpers: [{ helperId: maria }, { helperId: zoe }],
+    });
+
+    expect(alone).toMatchObject({ people: 1, onSiteMinutes: 180 });
+    expect(withOne).toMatchObject({ people: 2, onSiteMinutes: 90 });
+    expect(withTwo).toMatchObject({ people: 3, onSiteMinutes: 60 });
+    // The client pays the hours of cleaning, whoever does them.
+    expect(
+      [alone, withOne, withTwo].map((job) => [
+        job.durationMinutes,
+        job.priceCents,
+      ]),
+    ).toEqual([
+      [180, 13500],
+      [180, 13500],
+      [180, 13500],
+    ]);
+  });
+
+  it("counts only the helpers on a job the owner does not work on", async () => {
+    const { propertyId } = await createProperty();
+    const maria = await createHelper();
+    const zoe = await createHelper({ name: "Zoe" });
+
+    const job = await createJob(propertyId, {
+      durationMinutes: 180,
+      ownerWorks: false,
+      helpers: [{ helperId: maria }, { helperId: zoe }],
+    });
+
+    expect(job).toMatchObject({
+      ownerWorks: false,
+      people: 2,
+      onSiteMinutes: 90,
+    });
+  });
+
+  it("counts one person while nobody is marked", async () => {
+    const { propertyId } = await createProperty();
+
+    const job = await createJob(propertyId, {
+      durationMinutes: 180,
+      ownerWorks: false,
+    });
+
+    expect(job).toMatchObject({
+      ownerWorks: false,
+      helpers: [],
+      people: 1,
+      onSiteMinutes: 180,
+    });
+  });
+
+  it("rounds the time at the house to the minute, never to none", async () => {
+    const { propertyId } = await createProperty();
+    const maria = await createHelper();
+    const zoe = await createHelper({ name: "Zoe" });
+    const ana = await createHelper({ name: "Ana" });
+    const three = [{ helperId: maria }, { helperId: zoe }];
+    const four = [...three, { helperId: ana }];
+
+    const onSite = [];
+    for (const [durationMinutes, helpers] of [
+      [200, three], // 66.67
+      [100, three], // 33.33
+      [150, four], // 37.5
+      [1, three], // 0.33
+    ] as const) {
+      const job = await createJob(propertyId, { durationMinutes, helpers });
+      onSite.push(job.onSiteMinutes);
+    }
+
+    expect(onSite).toEqual([67, 33, 38, 1]);
+  });
+
+  it("pays each helper their rate for the time at the house", async () => {
+    const { propertyId } = await createProperty();
+    const maria = await createHelper({ hourlyRateCents: 2200 });
+    const zoe = await createHelper({ name: "Zoe", hourlyRateCents: 2000 });
+    const ana = await createHelper({ name: "Ana" });
+
+    const job = await createJob(propertyId, {
+      durationMinutes: 200,
+      ownerWorks: false,
+      helpers: [
+        { helperId: maria },
+        { helperId: zoe, hourlyRateCents: 2500 },
+        { helperId: ana },
+      ],
+    });
+
+    // 200 minutes between three: 67 minutes each, as the job reads.
+    expect(job).toMatchObject({ people: 3, onSiteMinutes: 67 });
+    expect(
+      job.helpers.map((assigned) => [assigned.helper.name, assigned.payCents]),
+    ).toEqual([
+      // No rate, usual or of the job: nothing to work out.
+      ["Ana", null],
+      // The usual rate: 2200 x 67 / 60.
+      ["Maria Silva", 2457],
+      // The rate of the job, not the usual 2000: 2500 x 67 / 60.
+      ["Zoe", 2792],
+    ]);
+  });
+
+  it("answers 400 unless ownerWorks is true or false", async () => {
+    const { propertyId } = await createProperty();
+    const job = {
+      propertyId,
+      scheduledDate: "2026-10-14",
+      startTime: "09:00",
+      durationMinutes: 150,
+      serviceType: "regular",
+      hourlyRateCents: 4500,
+    };
+
+    const text = await api.post("/jobs", { ...job, ownerWorks: "yes" });
+    const cleared = await api.post("/jobs", { ...job, ownerWorks: null });
+
+    for (const res of [text, cleared]) {
+      expect(res.status).toBe(400);
+      expect(res.body).toMatchObject({
+        error: { issues: [{ path: "ownerWorks" }] },
+      });
+    }
   });
 
   it("rounds the hourly price to whole cents", async () => {
@@ -424,6 +574,38 @@ describe("GET /jobs", () => {
     expect(res).toEqual({ status: 200, body: [earlier, later, nextDay] });
   });
 
+  it("lists each job with the people who do it", async () => {
+    const { propertyId } = await createProperty();
+    const maria = await createHelper({ hourlyRateCents: 2200 });
+    const zoe = await createHelper({ name: "Zoe" });
+    await createJob(propertyId, { startTime: "08:00", durationMinutes: 120 });
+    await createJob(propertyId, {
+      startTime: "10:00",
+      durationMinutes: 120,
+      helpers: [{ helperId: maria }],
+    });
+    await createJob(propertyId, {
+      startTime: "13:00",
+      durationMinutes: 120,
+      ownerWorks: false,
+      helpers: [{ helperId: maria }, { helperId: zoe }],
+    });
+
+    const res = await api.get<JobBody[]>("/jobs?from=2026-10-14&to=2026-10-14");
+
+    expect(
+      res.body.map((job) => [
+        job.people,
+        job.onSiteMinutes,
+        job.helpers.map((assigned) => assigned.payCents),
+      ]),
+    ).toEqual([
+      [1, 120, []],
+      [2, 60, [2200]],
+      [2, 60, [2200, null]],
+    ]);
+  });
+
   it("does not list jobs of another organization", async () => {
     const { organizationId, propertyId } = await createPropertyElsewhere();
     const job = await jobs.createJob(organizationId, {
@@ -503,9 +685,93 @@ describe("PATCH /jobs/:id", () => {
       ...job,
       durationMinutes: 180,
       priceCents: 13500,
+      onSiteMinutes: 180,
       updatedAt: expect.any(String),
     });
     expect(res.body.updatedAt > job.updatedAt).toBe(true);
+  });
+
+  it("takes the owner off the job and puts the owner back", async () => {
+    const { propertyId } = await createProperty();
+    const helperId = await createHelper({ hourlyRateCents: 2000 });
+    const job = await createJob(propertyId, {
+      durationMinutes: 180,
+      helpers: [{ helperId }],
+    });
+
+    const off = await api.patch<JobBody>(`/jobs/${job.id}`, {
+      ownerWorks: false,
+    });
+    const back = await api.patch<JobBody>(`/jobs/${job.id}`, {
+      ownerWorks: true,
+    });
+
+    expect(job).toMatchObject({
+      ownerWorks: true,
+      people: 2,
+      onSiteMinutes: 90,
+      helpers: [{ payCents: 3000 }],
+    });
+    // Alone, the helper is there for all of the hours, and is paid for them.
+    expect(off.status).toBe(200);
+    expect(off.body).toMatchObject({
+      ownerWorks: false,
+      people: 1,
+      onSiteMinutes: 180,
+      helpers: [{ payCents: 6000 }],
+      priceCents: job.priceCents,
+    });
+    expect(off.body.updatedAt > job.updatedAt).toBe(true);
+    expect(back.body).toMatchObject({
+      ownerWorks: true,
+      people: 2,
+      onSiteMinutes: 90,
+      helpers: [{ payCents: 3000 }],
+    });
+  });
+
+  it("leaves the owner alone when ownerWorks is not sent", async () => {
+    const { propertyId } = await createProperty();
+    const job = await createJob(propertyId, { ownerWorks: false });
+
+    const res = await api.patch<JobBody>(`/jobs/${job.id}`, {
+      notes: "Bring the ladder",
+    });
+
+    expect(res.body.ownerWorks).toBe(false);
+  });
+
+  it("works out the time at the house again when the helpers change", async () => {
+    const { propertyId } = await createProperty();
+    const maria = await createHelper({ hourlyRateCents: 2000 });
+    const zoe = await createHelper({ name: "Zoe", hourlyRateCents: 2400 });
+    const job = await createJob(propertyId, {
+      durationMinutes: 180,
+      helpers: [{ helperId: maria }],
+    });
+
+    const res = await api.patch<JobBody>(`/jobs/${job.id}`, {
+      helpers: [{ helperId: maria }, { helperId: zoe }],
+    });
+
+    expect(job).toMatchObject({ people: 2, onSiteMinutes: 90 });
+    expect(res.body).toMatchObject({
+      people: 3,
+      onSiteMinutes: 60,
+      helpers: [{ payCents: 2000 }, { payCents: 2400 }],
+    });
+  });
+
+  it("answers 400 for an ownerWorks set to null", async () => {
+    const { propertyId } = await createProperty();
+    const job = await createJob(propertyId);
+
+    const res = await api.patch(`/jobs/${job.id}`, { ownerWorks: null });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({
+      error: { issues: [{ path: "ownerWorks" }] },
+    });
   });
 
   it("keeps a fixed price when the duration changes", async () => {
@@ -583,10 +849,13 @@ describe("PATCH /jobs/:id", () => {
       {
         helper: { id: ana, name: "Ana", hourlyRateCents: null },
         hourlyRateCents: null,
+        payCents: null,
       },
       {
         helper: { id: zoe, name: "Zoe", hourlyRateCents: null },
         hourlyRateCents: 2100,
+        // 150 minutes between the two of them and the owner: 50 minutes.
+        payCents: 1750,
       },
     ]);
     // The helpers are part of the job: changing them changes it.
@@ -603,7 +872,7 @@ describe("PATCH /jobs/:id", () => {
     });
 
     const res = await api.patch<JobBody>(`/jobs/${job.id}`, {
-      durationMinutes: 180,
+      notes: "Bring the ladder",
     });
 
     expect(res.status).toBe(200);

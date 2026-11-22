@@ -6,6 +6,7 @@ import {
   assignmentArrays,
   jobHelpers,
   seriesHelpers,
+  teamJoin,
   unassignOtherHelpers,
 } from "../helpers/assigned.ts";
 import type { AssignedHelper, HelperAssignment } from "../helpers/assigned.ts";
@@ -41,6 +42,11 @@ export type RecurringSeries = {
   // The helpers the jobs are generated with, each at the rate those jobs pay
   // them when it is not their usual one (see Job).
   helpers: AssignedHelper[];
+  // Who does a job as the series generates it, and how long that takes them
+  // at the house (see Job).
+  ownerWorks: boolean;
+  people: number;
+  onSiteMinutes: number;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -52,6 +58,7 @@ export type JobTemplate = {
   hourlyRateCents: number;
   fixedPriceCents?: number | null;
   helpers?: HelperAssignment[];
+  ownerWorks?: boolean;
   notes?: string | null;
 };
 
@@ -79,6 +86,7 @@ export const templateColumns: Record<TemplateColumn, string> = {
   serviceType: "service_type",
   hourlyRateCents: "hourly_rate_cents",
   fixedPriceCents: "fixed_price_cents",
+  ownerWorks: "owner_works",
   notes: "notes",
 };
 
@@ -112,6 +120,9 @@ const columns = `
   ) AS property,
   json_build_object('id', c.id, 'name', c.name) AS client,
   ${assignedHelpersColumn(seriesHelpers, "s")},
+  s.owner_works AS "ownerWorks",
+  team.people,
+  team.on_site_minutes AS "onSiteMinutes",
   s.created_at AS "createdAt",
   s.updated_at AS "updatedAt"
 `;
@@ -121,6 +132,7 @@ const joins = `
     ON p.organization_id = s.organization_id AND p.id = s.property_id
   JOIN clients c
     ON c.organization_id = p.organization_id AND c.id = p.client_id
+  ${teamJoin(seriesHelpers, "s")}
 `;
 
 export async function listSeries(
@@ -148,8 +160,10 @@ export async function findSeries(
 }
 
 // Returns undefined when the property does not exist in the organization.
-// The series and its helpers are written by one statement, which cannot read
-// back the helpers it wrote: the series is read once it is there.
+// An INSERT ... SELECT cannot use the DEFAULT keyword, hence the COALESCE
+// mirroring the default. The series and its helpers are written by one
+// statement, which cannot read back the helpers it wrote: the series is read
+// once it is there.
 export async function createSeries(
   organizationId: string,
   input: NewRecurringSeries,
@@ -159,14 +173,15 @@ export async function createSeries(
        INSERT INTO recurring_series (
          organization_id, property_id, every_weeks, day_of_month, start_date,
          end_date, start_time, duration_minutes, service_type,
-         hourly_rate_cents, fixed_price_cents, notes
+         hourly_rate_cents, fixed_price_cents, notes, owner_works
        )
-       SELECT organization_id, id, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
+       SELECT organization_id, id, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+              COALESCE($13, true)
        FROM properties
        WHERE organization_id = $1 AND id = $2
        RETURNING organization_id, id
      ),
-     ${assignHelpers(seriesHelpers, "inserted", "$13", "$14")}
+     ${assignHelpers(seriesHelpers, "inserted", "$14", "$15")}
      SELECT id FROM inserted`,
     [
       organizationId,
@@ -181,6 +196,7 @@ export async function createSeries(
       input.hourlyRateCents,
       input.fixedPriceCents ?? null,
       input.notes ?? null,
+      input.ownerWorks ?? null,
       ...assignmentArrays(input.helpers ?? []),
     ],
   );
@@ -325,11 +341,11 @@ export async function generateJobs(
        INSERT INTO jobs (
          organization_id, property_id, recurring_series_id, scheduled_date,
          start_time, duration_minutes, service_type, hourly_rate_cents,
-         fixed_price_cents, notes
+         fixed_price_cents, notes, owner_works
        )
        SELECT s.organization_id, s.property_id, s.id, d.date, s.start_time,
               s.duration_minutes, s.service_type, s.hourly_rate_cents,
-              s.fixed_price_cents, s.notes
+              s.fixed_price_cents, s.notes, s.owner_works
        FROM claimed s, unnest($5::date[]) AS d(date)
        RETURNING organization_id, id, recurring_series_id
      ),

@@ -78,4 +78,20 @@ describe("createSampleData", () => {
     expect(completed.some((j) => j.invoice === null)).toBe(true);
     expect(completed.some((j) => j.invoice !== null)).toBe(true);
   });
+
+  it("has visits the owner does alone, with helpers, and helpers do without the owner", async () => {
+    await createSampleData(api.organizationId);
+    const today = await organizations.today(api.organizationId);
+
+    const jobs = await jobsBetween(addDays(today, -28), addDays(today, 28));
+
+    expect(jobs.some((j) => j.ownerWorks && j.people === 1)).toBe(true);
+    expect(jobs.some((j) => j.ownerWorks && j.people > 1)).toBe(true);
+    expect(jobs.some((j) => !j.ownerWorks && j.people === 1)).toBe(true);
+    expect(jobs.some((j) => !j.ownerWorks && j.people > 1)).toBe(true);
+    // Several people are at the house for less than the hours of cleaning.
+    expect(
+      jobs.every((j) => j.people > 1 === j.onSiteMinutes < j.durationMinutes),
+    ).toBe(true);
+  });
 });

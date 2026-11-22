@@ -130,6 +130,7 @@ function templateChanges(
     serviceType: before.serviceType,
     hourlyRateCents: before.hourlyRateCents,
     fixedPriceCents: before.fixedPriceCents,
+    ownerWorks: before.ownerWorks,
     notes: before.notes,
   };
   const changes: series.TemplateChange[] = [];

@@ -18,6 +18,7 @@ const horizon = addDays(today, 56);
 type AssignedHelpers = Array<{
   helper: { id: string; name: string; hourlyRateCents: number | null };
   hourlyRateCents: number | null;
+  payCents: number | null;
 }>;
 
 // Who is assigned and at which rate of their own, without the rest.
@@ -44,6 +45,9 @@ type SeriesBody = {
   property: { id: string };
   client: { id: string; name: string };
   helpers: AssignedHelpers;
+  ownerWorks: boolean;
+  people: number;
+  onSiteMinutes: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -58,6 +62,9 @@ type JobBody = {
   priceCents: number;
   notes: string | null;
   helpers: AssignedHelpers;
+  ownerWorks: boolean;
+  people: number;
+  onSiteMinutes: number;
   recurringSeriesId: string | null;
   updatedAt: string;
 };
@@ -133,6 +140,10 @@ describe("POST /recurring-series", () => {
       generatedUntil: horizon,
       startTime: "09:00:00",
       helpers: [{ helper: { id: helperId, name: "Maria Silva" } }],
+      // The owner works on the visits unless the series says otherwise.
+      ownerWorks: true,
+      people: 2,
+      onSiteMinutes: 60,
       client: { name: "Jane Doe" },
     });
     const jobs = await jobsUpTo(series.id, horizon);
@@ -148,8 +159,38 @@ describe("POST /recurring-series", () => {
       priceCents: 9000,
       notes: "Side door",
       helpers: [{ helper: { id: helperId } }],
+      ownerWorks: true,
+      people: 2,
+      onSiteMinutes: 60,
       recurringSeriesId: series.id,
     });
+  });
+
+  it("generates visits the owner does not work on", async () => {
+    const maria = await createHelper();
+    const zoe = await createHelper("Zoe");
+
+    const series = await createSeries({
+      everyWeeks: 2,
+      durationMinutes: 150,
+      ownerWorks: false,
+      helpers: [{ helperId: maria, hourlyRateCents: 2400 }, { helperId: zoe }],
+    });
+
+    // 150 minutes between the two helpers: 75 minutes each.
+    const visit = {
+      ownerWorks: false,
+      people: 2,
+      onSiteMinutes: 75,
+      helpers: [
+        { helper: { name: "Maria Silva" }, payCents: 3000 },
+        { helper: { name: "Zoe" }, payCents: null },
+      ],
+    };
+    expect(series).toMatchObject(visit);
+    const jobs = await jobsUpTo(series.id, horizon);
+    expect(jobs).toHaveLength(5);
+    expect(jobs).toMatchObject([visit, visit, visit, visit, visit]);
   });
 
   it("generates the visits with the helpers of the series, at its rates", async () => {
@@ -460,6 +501,50 @@ describe("PATCH /recurring-series/:id", () => {
     ]);
   });
 
+  it("takes the owner off the upcoming jobs, and puts the owner back", async () => {
+    const helperId = await createHelper();
+    const series = await createSeries({
+      everyWeeks: 2,
+      helpers: [{ helperId }],
+    });
+    const [first] = await jobsUpTo(series.id, horizon);
+    if (first === undefined) {
+      throw new Error("Expected generated jobs");
+    }
+    // One visit already happened: it is left as it was done.
+    await api.patch(`/jobs/${first.id}`, { status: "completed" });
+
+    const off = await api.patch<SeriesBody>(`/recurring-series/${series.id}`, {
+      ownerWorks: false,
+    });
+    const without = await jobsUpTo(series.id, horizon);
+    const back = await api.patch<SeriesBody>(`/recurring-series/${series.id}`, {
+      ownerWorks: true,
+    });
+    const withOwner = await jobsUpTo(series.id, horizon);
+
+    const team = (jobs: JobBody[]) =>
+      jobs.map((job) => [job.ownerWorks, job.people, job.onSiteMinutes]);
+    expect(off.body).toMatchObject({
+      ownerWorks: false,
+      people: 1,
+      onSiteMinutes: 120,
+    });
+    expect(team(without)).toEqual([
+      [true, 2, 60], // completed
+      [false, 1, 120],
+      [false, 1, 120],
+      [false, 1, 120],
+      [false, 1, 120],
+    ]);
+    expect(back.body).toMatchObject({
+      ownerWorks: true,
+      people: 2,
+      onSiteMinutes: 60,
+    });
+    expect(team(withOwner)).toEqual(withOwner.map(() => [true, 2, 60]));
+  });
+
   it("assigns and unassigns the helpers on the upcoming jobs", async () => {
     const helperId = await createHelper();
     const series = await createSeries({ everyWeeks: 2 });
@@ -479,8 +564,11 @@ describe("PATCH /recurring-series/:id", () => {
       {
         helper: { id: helperId, name: "Maria Silva", hourlyRateCents: null },
         hourlyRateCents: null,
+        payCents: null,
       },
     ]);
+    expect(assigned.body).toMatchObject({ people: 2, onSiteMinutes: 60 });
+    expect(unassigned.body).toMatchObject({ people: 1, onSiteMinutes: 120 });
     expect(withHelper.map((job) => ratesOf(job.helpers))).toEqual(
       withHelper.map(() => [["Maria Silva", null]]),
     );
